@@ -92,7 +92,7 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
       FutureOrder,
       Notification,
     ],
-    synchronize: false, // Never use synchronize in production - use migrations
+    synchronize: false, // Never use synchronize against production/shared DB - use migrations
     logging: configService.get<string>('NODE_ENV') === 'development',
     extra: {
       max: 20, // Maximum pool size

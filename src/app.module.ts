@@ -54,6 +54,7 @@ import { StoreNewsletterModule } from './modules/store-newsletter/store-newslett
 import { StoreWholesaleEnquiryModule } from './modules/store-wholesale-enquiry/store-wholesale-enquiry.module';
 import { StoreBlogsModule } from './modules/store-blogs/store-blogs.module';
 import { StoreReviewsModule } from './modules/store-reviews/store-reviews.module';
+import { StoreChatbotModule } from './modules/store-chatbot/store-chatbot.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 
@@ -108,6 +109,7 @@ import { AppService } from './app.service';
     StoreWholesaleEnquiryModule,
     StoreBlogsModule,
     StoreReviewsModule,
+    StoreChatbotModule,
   ],
   controllers: [AppController],
   providers: [
