@@ -102,10 +102,33 @@ async function bootstrap() {
   const uploadsDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
   app.use('/uploads', express.static(uploadsDir));
 
-  // TEMPORARY: Migration endpoint - downloads ZIP from a URL and extracts to volume
-  // Remove this after migration is complete
+  // TEMPORARY: Migration endpoints - Remove after migration is complete
+  const multer = require('multer');
+  const uploadMiddleware = multer({ dest: '/tmp/', limits: { fileSize: 200 * 1024 * 1024 } });
   const expressInstance = app.getHttpAdapter().getInstance();
-  expressInstance.post('/migrate-uploads', express.json(), async (req: any, res: any) => {
+
+  // Option 1: Direct file upload
+  expressInstance.post('/migrate-uploads', uploadMiddleware.single('file'), async (req: any, res: any) => {
+    const migrationKey = process.env.MIGRATION_KEY || 'stdreux-migrate-2026';
+    if (req.headers['x-migration-key'] !== migrationKey) {
+      return res.status(403).json({ error: 'Invalid migration key' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded. Use -F "file=@yourfile.zip"' });
+    }
+    try {
+      const zipPath = req.file.path;
+      execSync(`unzip -o "${zipPath}" -d "${uploadsDir}"`, { stdio: 'pipe', timeout: 300000 });
+      fs.unlinkSync(zipPath);
+      const files = execSync(`find "${uploadsDir}" -type f | head -50`, { encoding: 'utf-8' });
+      res.json({ success: true, message: 'Files extracted to uploads volume', sample_files: files.split('\n').filter(Boolean) });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Extraction failed', details: error.message });
+    }
+  });
+
+  // Option 2: Download from URL
+  expressInstance.post('/migrate-uploads-url', express.json(), async (req: any, res: any) => {
     const migrationKey = process.env.MIGRATION_KEY || 'stdreux-migrate-2026';
     if (req.headers['x-migration-key'] !== migrationKey) {
       return res.status(403).json({ error: 'Invalid migration key' });
@@ -116,20 +139,13 @@ async function bootstrap() {
     }
     try {
       const zipPath = '/tmp/uploads_migration.zip';
-      // Download the ZIP from the provided URL
       console.log(`[Migration] Downloading from: ${url}`);
       execSync(`wget -O "${zipPath}" "${url}"`, { stdio: 'pipe', timeout: 600000 });
-      console.log('[Migration] Download complete, extracting...');
-      // Extract ZIP to uploads directory
       execSync(`unzip -o "${zipPath}" -d "${uploadsDir}"`, { stdio: 'pipe', timeout: 300000 });
-      // Clean up temp file
       fs.unlinkSync(zipPath);
-      // List what was extracted
       const files = execSync(`find "${uploadsDir}" -type f | head -50`, { encoding: 'utf-8' });
-      console.log('[Migration] Extraction complete');
       res.json({ success: true, message: 'Files extracted to uploads volume', sample_files: files.split('\n').filter(Boolean) });
     } catch (error: any) {
-      console.error('[Migration] Failed:', error.message);
       res.status(500).json({ error: 'Migration failed', details: error.message });
     }
   });
