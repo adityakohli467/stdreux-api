@@ -32,6 +32,9 @@ ENV PORT=8000
 RUN addgroup --system --gid 1001 nodejs \
  && adduser --system --uid 1001 nestjs
 
+# Install unzip for migration (can remove after migration)
+RUN apk add --no-cache unzip findutils
+
 # Copy only what is required to run the app
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json

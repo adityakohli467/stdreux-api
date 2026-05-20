@@ -6,6 +6,8 @@ import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import * as crypto from 'crypto';
 import * as express from 'express';
 import * as path from 'path';
+import * as fs from 'fs';
+import { execSync } from 'child_process';
 
 // Ensure crypto is available globally for TypeORM
 if (typeof globalThis.crypto === 'undefined') {
@@ -99,6 +101,32 @@ async function bootstrap() {
   // Serve local uploads directory as static files
   const uploadsDir = process.env.UPLOAD_DIR || path.join(process.cwd(), 'uploads');
   app.use('/uploads', express.static(uploadsDir));
+
+  // TEMPORARY: Migration endpoint to upload ZIP of files to the volume
+  // Remove this after migration is complete
+  const multer = require('multer');
+  const upload = multer({ dest: '/tmp/', limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
+  app.getHttpAdapter().post('/migrate-uploads', upload.single('file'), (req: any, res: any) => {
+    const migrationKey = process.env.MIGRATION_KEY || 'stdreux-migrate-2026';
+    if (req.headers['x-migration-key'] !== migrationKey) {
+      return res.status(403).json({ error: 'Invalid migration key' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    try {
+      const zipPath = req.file.path;
+      // Extract ZIP to uploads directory
+      execSync(`unzip -o "${zipPath}" -d "${uploadsDir}"`, { stdio: 'pipe' });
+      // Clean up temp file
+      fs.unlinkSync(zipPath);
+      // List what was extracted
+      const files = execSync(`find "${uploadsDir}" -type f | head -50`, { encoding: 'utf-8' });
+      res.json({ success: true, message: 'Files extracted to uploads volume', sample_files: files.split('\n').filter(Boolean) });
+    } catch (error: any) {
+      res.status(500).json({ error: 'Extraction failed', details: error.message });
+    }
+  });
 
   const port = process.env.PORT || 8000;
   await app.listen(port, '0.0.0.0');
