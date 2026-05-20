@@ -40,10 +40,8 @@ COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 COPY --from=deps /app/node_modules ./node_modules
 
-# Create uploads directory with correct ownership
-RUN mkdir -p /app/uploads && chown -R nestjs:nodejs /app/uploads
-
-USER nestjs
+# Create uploads directory
+RUN mkdir -p /app/uploads
 
 EXPOSE 8000
 

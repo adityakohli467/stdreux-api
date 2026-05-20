@@ -118,8 +118,15 @@ async function bootstrap() {
     }
     try {
       const zipPath = req.file.path;
-      execSync(`unzip -o "${zipPath}" -d "${uploadsDir}"`, { stdio: 'pipe', timeout: 300000 });
+      const tmpExtract = '/tmp/extract_migration';
+      // Extract to temp dir first
+      execSync(`rm -rf "${tmpExtract}" && mkdir -p "${tmpExtract}"`, { stdio: 'pipe' });
+      execSync(`unzip -o "${zipPath}" -d "${tmpExtract}"`, { stdio: 'pipe', timeout: 300000 });
+      // Move contents (handles nested uploads_backup/ directory)
+      execSync(`cp -r "${tmpExtract}"/*/. "${uploadsDir}/" 2>/dev/null || cp -r "${tmpExtract}"/. "${uploadsDir}/"`, { stdio: 'pipe' });
+      // Clean up
       fs.unlinkSync(zipPath);
+      execSync(`rm -rf "${tmpExtract}"`, { stdio: 'pipe' });
       const files = execSync(`find "${uploadsDir}" -type f | head -50`, { encoding: 'utf-8' });
       res.json({ success: true, message: 'Files extracted to uploads volume', sample_files: files.split('\n').filter(Boolean) });
     } catch (error: any) {
