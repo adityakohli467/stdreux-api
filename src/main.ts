@@ -105,8 +105,9 @@ async function bootstrap() {
   // TEMPORARY: Migration endpoint to upload ZIP of files to the volume
   // Remove this after migration is complete
   const multer = require('multer');
-  const upload = multer({ dest: '/tmp/', limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
-  app.getHttpAdapter().post('/migrate-uploads', upload.single('file'), (req: any, res: any) => {
+  const uploadMiddleware = multer({ dest: '/tmp/', limits: { fileSize: 500 * 1024 * 1024 } }); // 500MB max
+  const expressInstance = app.getHttpAdapter().getInstance();
+  expressInstance.post('/migrate-uploads', uploadMiddleware.single('file'), (req: any, res: any) => {
     const migrationKey = process.env.MIGRATION_KEY || 'stdreux-migrate-2026';
     if (req.headers['x-migration-key'] !== migrationKey) {
       return res.status(403).json({ error: 'Invalid migration key' });
