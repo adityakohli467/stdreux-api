@@ -208,23 +208,21 @@ export class AdminBlogsService {
       publishedDate = new Date();
     }
 
-    // Explicitly compute next blog_id to avoid broken SERIAL sequence issues
-    const nextIdResult = await this.dataSource.query(
-      'SELECT COALESCE(MAX(blog_id), 0) + 1 as next_id FROM blogs'
+    // Ensure the blog_id sequence is in sync with actual data to prevent conflicts
+    await this.dataSource.query(
+      `SELECT setval(pg_get_serial_sequence('blogs', 'blog_id'), COALESCE((SELECT MAX(blog_id) FROM blogs), 0) + 1, false)`
     );
-    const nextId = nextIdResult[0].next_id;
 
     const query = `
       INSERT INTO blogs (
-        blog_id, title, slug, category, excerpt, content, featured_image_url,
+        title, slug, category, excerpt, content, featured_image_url,
         author, tags, read_time, is_featured, is_published, published_date, created_by
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
       RETURNING *
     `;
 
     const params = [
-      nextId,
       data.title,
       data.slug,
       data.category || null,
