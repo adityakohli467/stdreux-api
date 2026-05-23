@@ -11,7 +11,7 @@ import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './auth/auth.module';
 import { CommonModule } from './common/common.module';
-import { ApiHistoryInterceptor } from './common/interceptors/api-history.interceptor';
+// import { ApiHistoryInterceptor } from './common/interceptors/api-history.interceptor'; // Disabled - api_history table overpopulated, not needed
 import { ProductsModule } from './modules/products/products.module';
 import { AdminOrdersModule } from './modules/admin-orders/admin-orders.module';
 import { AdminCustomersModule } from './modules/admin-customers/admin-customers.module';
@@ -114,10 +114,11 @@ import { AppService } from './app.service';
   controllers: [AppController],
   providers: [
     AppService,
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: ApiHistoryInterceptor,
-    },
+    // API History interceptor disabled - table overpopulated, not needed
+    // {
+    //   provide: APP_INTERCEPTOR,
+    //   useClass: ApiHistoryInterceptor,
+    // },
   ],
 })
 export class AppModule { }
