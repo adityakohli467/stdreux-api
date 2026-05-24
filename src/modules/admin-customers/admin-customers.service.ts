@@ -501,7 +501,9 @@ export class AdminCustomersService implements OnModuleInit {
       // Delete customer product discounts
       await queryRunner.query('DELETE FROM customer_product_discount WHERE customer_id = $1', [id]);
       // Delete API history records
-      await queryRunner.query('DELETE FROM api_history WHERE customer_id = $1', [id]);
+      try {
+        await queryRunner.query('DELETE FROM api_history WHERE customer_id = $1', [id]);
+      } catch (e) { /* table may not exist or too many records */ }
       // Nullify customer_id in payment_history (preserve payment records)
       await queryRunner.query('UPDATE payment_history SET customer_id = NULL WHERE customer_id = $1', [id]);
       // Nullify customer_id in product reviews (preserve reviews)
@@ -510,6 +512,14 @@ export class AdminCustomersService implements OnModuleInit {
       } catch (e) { /* table may not exist */ }
       // Nullify customer_id on orders (preserve orders for record-keeping)
       await queryRunner.query('UPDATE orders SET customer_id = NULL WHERE customer_id = $1', [id]);
+      // Nullify user_id on orders placed by this customer (if user_id references customer)
+      try {
+        await queryRunner.query('UPDATE orders SET user_id = NULL WHERE user_id = (SELECT user_id FROM customer WHERE customer_id = $1)', [id]);
+      } catch (e) { /* ignore */ }
+      // Delete notifications referencing this customer's orders
+      try {
+        await queryRunner.query('DELETE FROM notification WHERE userid = (SELECT user_id FROM customer WHERE customer_id = $1)', [id]);
+      } catch (e) { /* table may not exist */ }
       // Delete the customer
       await queryRunner.query('DELETE FROM customer WHERE customer_id = $1', [id]);
 

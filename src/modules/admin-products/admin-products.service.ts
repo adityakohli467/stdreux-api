@@ -1221,6 +1221,15 @@ export class AdminProductsService {
         await queryRunner.query('DELETE FROM product_review WHERE product_id = $1', [Number(id)]);
       } catch (e) { /* table may not exist */ }
 
+      // Nullify product_option_id in order_product_option (preserve order history)
+      try {
+        await queryRunner.query(
+          `UPDATE order_product_option SET product_option_id = NULL 
+           WHERE order_product_id IN (SELECT order_product_id FROM order_product WHERE product_id = $1)`,
+          [Number(id)]
+        );
+      } catch (e) { /* table or column may not exist */ }
+
       // Nullify product_id in order_product (preserve order history)
       await queryRunner.query('UPDATE order_product SET product_id = NULL WHERE product_id = $1', [Number(id)]);
 
