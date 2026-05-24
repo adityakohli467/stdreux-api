@@ -128,6 +128,9 @@ export class Order {
   @Column({ type: "varchar", length: 255, nullable: true })
   customer_order_name!: string
 
+  @Column({ type: "int", default: 0 })
+  packaging_status!: number // 0 = New Order, 1 = Printed, 2 = Packed, 3 = Delivered
+
   @CreateDateColumn({ name: "date_added" })
   date_added!: Date
 

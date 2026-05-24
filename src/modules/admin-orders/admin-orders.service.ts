@@ -30,9 +30,10 @@ export class AdminOrdersService implements OnModuleInit {
         ALTER TABLE orders 
         ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50),
         ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'pending',
-        ADD COLUMN IF NOT EXISTS subscription_start_date TIMESTAMP
+        ADD COLUMN IF NOT EXISTS subscription_start_date TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0
       `);
-      this.logger.log('Ensured payment and subscription columns exist in orders table');
+      this.logger.log('Ensured payment, subscription, and packaging columns exist in orders table');
     } catch (error) {
       this.logger.error('Failed to add columns to orders table:', error);
     }
@@ -1184,6 +1185,27 @@ export class AdminOrdersService implements OnModuleInit {
     return this.findOne(id);
   }
 
+  async updatePackagingStatus(id: number, packagingStatus: number): Promise<any> {
+    const order = await this.orderRepository.findOne({ where: { order_id: id } });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    // Update packaging_status: 0=New Order, 1=Printed, 2=Packed, 3=Delivered
+    const updateData: any = { packaging_status: packagingStatus, date_modified: new Date() };
+
+    // If delivered (3), also mark as completed
+    if (packagingStatus === 3) {
+      updateData.order_status = 5;
+      updateData.is_completed = 1;
+    }
+
+    await this.orderRepository.update({ order_id: id }, updateData);
+
+    return this.findOne(id);
+  }
+
   async markAsPaid(id: number, userId?: number): Promise<any> {
     const order = await this.orderRepository.findOne({ where: { order_id: id } });
 
@@ -1452,6 +1474,7 @@ export class AdminOrdersService implements OnModuleInit {
         o.customer_order_name,
         o.customer_from as order_made_from,
         o.standing_order,
+        COALESCE(o.packaging_status, 0) as packaging_status,
         c.firstname,
         c.lastname,
         c.email,
@@ -1482,6 +1505,7 @@ export class AdminOrdersService implements OnModuleInit {
       is_completed: row.is_completed || 0,
       standing_order: row.standing_order || 0,
       order_made_from: row.order_made_from,
+      packaging_status: parseInt(row.packaging_status) || 0,
       customer: {
         firstname: row.firstname,
         lastname: row.lastname,

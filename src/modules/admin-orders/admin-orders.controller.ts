@@ -167,6 +167,25 @@ export class AdminOrdersController {
     return this.adminOrdersService.markAsCompleted(id);
   }
 
+  @Put(':id/packaging-status')
+  @ApiOperation({ summary: 'Update order packaging status' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        packaging_status: { type: 'number', example: 1, description: '0=New Order, 1=Printed, 2=Packed, 3=Delivered' },
+      },
+      required: ['packaging_status'],
+    },
+  })
+  async updatePackagingStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { packaging_status: number },
+  ) {
+    return this.adminOrdersService.updatePackagingStatus(id, body.packaging_status);
+  }
+
   @Put(':id/mark-paid')
   @ApiOperation({ summary: 'Mark order as paid' })
   @ApiParam({ name: 'id', type: Number })
