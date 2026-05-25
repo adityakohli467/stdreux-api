@@ -652,8 +652,8 @@ export class InvoiceService {
           // Show options if available
           if (item.options && item.options.length > 0) {
             item.options.forEach((opt: any) => {
-              doc.fontSize(6).fillColor(lightGray);
-              let optionText = `${opt.option_name}: ${opt.option_value} (${opt.option_quantity}x)`;
+              doc.fontSize(7).fillColor('#4a5568');
+              let optionText = `${opt.option_name}: ${opt.option_value} (Qty: ${opt.option_quantity})`;
               if (opt.option_price && opt.option_price !== 0) {
                 const sign = opt.option_price > 0 ? '+' : '-';
                 optionText += ` [${sign}$${Math.abs(opt.option_price).toFixed(2)}]`;
@@ -661,7 +661,7 @@ export class InvoiceService {
               doc.text(optionText, 55, tableY + 8 + extraHeight, { width: 295 });
               doc.fillColor(darkGray);
               doc.fontSize(7);
-              extraHeight += 6;
+              extraHeight += 8;
             });
           }
 
