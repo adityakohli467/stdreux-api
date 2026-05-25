@@ -133,7 +133,7 @@ export class AdminOrdersService implements OnModuleInit {
       if (order_type) {
         const now = new Date();
         if (order_type === 'past') {
-          sqlQuery += ` AND o.standing_order = 0 AND o.delivery_date_time < $${paramIndex++}`;
+          sqlQuery += ` AND o.standing_order = 0 AND (o.delivery_date_time < $${paramIndex++} OR o.order_status = 5)`;
           params.push(now.toISOString());
         } else if (order_type === 'future') {
           // Include both regular future orders and subscription-generated future orders
