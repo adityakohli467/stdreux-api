@@ -131,6 +131,9 @@ export class Order {
   @Column({ type: "int", default: 0 })
   packaging_status!: number // 0 = New Order, 1 = Printed, 2 = Packed, 3 = Delivered
 
+  @Column({ type: "text", nullable: true })
+  packaging_comment!: string
+
   @CreateDateColumn({ name: "date_added" })
   date_added!: Date
 

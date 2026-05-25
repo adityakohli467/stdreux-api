@@ -186,6 +186,25 @@ export class AdminOrdersController {
     return this.adminOrdersService.updatePackagingStatus(id, body.packaging_status);
   }
 
+  @Put(':id/packaging-comment')
+  @ApiOperation({ summary: 'Update order packaging comment' })
+  @ApiParam({ name: 'id', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        packaging_comment: { type: 'string', description: 'Packaging slip comment' },
+      },
+      required: ['packaging_comment'],
+    },
+  })
+  async updatePackagingComment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { packaging_comment: string },
+  ) {
+    return this.adminOrdersService.updatePackagingComment(id, body.packaging_comment);
+  }
+
   @Put(':id/mark-paid')
   @ApiOperation({ summary: 'Mark order as paid' })
   @ApiParam({ name: 'id', type: Number })

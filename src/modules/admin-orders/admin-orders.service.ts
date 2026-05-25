@@ -87,6 +87,8 @@ export class AdminOrdersService implements OnModuleInit {
         o.coupon_id,
         o.coupon_discount as stored_coupon_discount,
         o.user_id,
+        COALESCE(o.packaging_status, 0) as packaging_status,
+        COALESCE(o.is_completed, 0) as is_completed,
         ${hasCustomerFrom ? 'o.customer_from' : "'portal'"} as order_made_from,
         ${hasPaymentMethod ? 'o.payment_method' : "NULL as payment_method"},
         ${hasPaymentStatus ? 'o.payment_status' : "NULL as payment_status"},
@@ -323,6 +325,8 @@ export class AdminOrdersService implements OnModuleInit {
         order_made_from: row.order_made_from,
         payment_method: row.payment_method,
         payment_status: (row.payment_status === 'succeeded' || row.has_successful_payment || row.order_status === 2) ? 'Paid' : (row.payment_status === 'pay_later' ? 'Pay Later' : 'Not Paid'),
+        packaging_status: row.packaging_status || 0,
+        is_completed: row.is_completed || 0,
       };
     });
 
@@ -1202,6 +1206,18 @@ export class AdminOrdersService implements OnModuleInit {
     }
 
     await this.orderRepository.update({ order_id: id }, updateData);
+
+    return this.findOne(id);
+  }
+
+  async updatePackagingComment(id: number, packagingComment: string): Promise<any> {
+    const order = await this.orderRepository.findOne({ where: { order_id: id } });
+
+    if (!order) {
+      throw new NotFoundException('Order not found');
+    }
+
+    await this.orderRepository.update({ order_id: id }, { packaging_comment: packagingComment, date_modified: new Date() } as any);
 
     return this.findOne(id);
   }
