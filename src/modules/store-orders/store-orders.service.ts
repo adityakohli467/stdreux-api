@@ -231,22 +231,16 @@ export class StoreOrdersService {
         const hasOptions = item.options && item.options.length > 0;
 
         if (hasOptions) {
-          // Product has options - apply option-level discounts
+          // Product has options - use option quantities for pricing, not product quantity
+          // Reset itemTotal since base price is typically 0 for option-based products
+          itemTotal = 0;
+
           for (const option of item.options) {
             if (option.option_value_id) {
               const discountKey = `${product.product_id}_${option.option_value_id}`;
               const optionDiscount = optionDiscountsMap.get(discountKey) || 0;
 
               const baseOptionPrice = parseFloat(option.option_price || option.price || 0);
-              // Note: We don't have standard_price/wholesale_price for options here from payload
-              // We should ideally fetch them from DB or assume payload has them?
-              // The payload usually comes from frontend which has these details.
-              // But to be safe, we might need to fetch them if we want accurate pricing.
-              // However, typically options price in payload is trusted or validated.
-              // For now, let's use the provided price as base and apply discounts.
-
-              // Better: use DB lookup for options if possible, but that might be slow inside loop.
-              // Let's assume option.option_price is the correct base price (retail).
 
               const optionPricing = this.pricingService.calculateOptionPrice(
                 null, // standardPrice (unknown without lookup)
@@ -256,14 +250,9 @@ export class StoreOrdersService {
                 optionDiscount
               );
 
-              // Add option price to total (option price * quantity)
-              // Note: itemTotal currently includes base product price * quantity.
-              // Options are usually additive.
-              // If option has price, we add (option_price * item_quantity).
-              // Wait, usually option quantity is separate?
-              // Code below says: itemTotal += (optionPrice) * item.quantity
-
-              itemTotal += optionPricing.finalPrice * item.quantity;
+              // Use option's own quantity, not the product-level cart quantity
+              const optionQuantity = option.quantity || 1;
+              itemTotal += optionPricing.finalPrice * optionQuantity;
 
               // Update option price in the item object for storage
               option.price = optionPricing.finalPrice;
