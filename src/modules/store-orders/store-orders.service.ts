@@ -232,8 +232,8 @@ export class StoreOrdersService {
 
         if (hasOptions) {
           // Product has options - option price is per-unit, multiply by product quantity
-          // Reset itemTotal since base price is typically 0 for option-based products
-          itemTotal = 0;
+          let optionBasedTotal = 0;
+          let hasNonZeroOptionPrices = false;
 
           for (const option of item.options) {
             if (option.option_value_id) {
@@ -250,15 +250,25 @@ export class StoreOrdersService {
                 optionDiscount
               );
 
+              if (optionPricing.finalPrice > 0) {
+                hasNonZeroOptionPrices = true;
+              }
+
               // Use product-level quantity (option price is per-unit)
               // Set option.quantity to item.quantity so it's stored correctly in order_product_option
               option.quantity = item.quantity;
-              itemTotal += optionPricing.finalPrice * item.quantity;
+              optionBasedTotal += optionPricing.finalPrice * item.quantity;
 
               // Update option price in the item object for storage
               option.price = optionPricing.finalPrice;
               option.option_price = optionPricing.finalPrice;
             }
+          }
+
+          // Only override itemTotal if options have actual prices
+          // (handles edge case where option price was absorbed into product base price)
+          if (hasNonZeroOptionPrices) {
+            itemTotal = optionBasedTotal;
           }
         }
 
