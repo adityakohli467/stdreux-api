@@ -665,7 +665,7 @@ export class InvoiceService {
             });
           }
 
-          doc.text(item.quantity.toString(), 360, tableY + 1);
+          doc.text(item.options && item.options.length > 0 ? '-' : item.quantity.toString(), 360, tableY + 1);
           // Fix unit price: if price is 0 but total > 0, calculate from total/quantity
           const unitPrice = item.price > 0 ? item.price : (item.total > 0 && item.quantity > 0 ? item.total / item.quantity : 0);
           doc.text(`$${unitPrice.toFixed(2)}`, 410, tableY + 1);
