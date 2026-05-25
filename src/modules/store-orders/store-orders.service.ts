@@ -231,7 +231,7 @@ export class StoreOrdersService {
         const hasOptions = item.options && item.options.length > 0;
 
         if (hasOptions) {
-          // Product has options - use option quantities for pricing, not product quantity
+          // Product has options - option price is per-unit, multiply by product quantity
           // Reset itemTotal since base price is typically 0 for option-based products
           itemTotal = 0;
 
@@ -250,9 +250,10 @@ export class StoreOrdersService {
                 optionDiscount
               );
 
-              // Use option's own quantity, not the product-level cart quantity
-              const optionQuantity = option.quantity || 1;
-              itemTotal += optionPricing.finalPrice * optionQuantity;
+              // Use product-level quantity (option price is per-unit)
+              // Set option.quantity to item.quantity so it's stored correctly in order_product_option
+              option.quantity = item.quantity;
+              itemTotal += optionPricing.finalPrice * item.quantity;
 
               // Update option price in the item object for storage
               option.price = optionPricing.finalPrice;
