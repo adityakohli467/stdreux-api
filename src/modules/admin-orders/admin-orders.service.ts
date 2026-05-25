@@ -151,7 +151,24 @@ export class AdminOrdersService implements OnModuleInit {
           params.push(now.toISOString());
           paramIndex++;
         } else if (order_type === 'reminder') {
-          sqlQuery += ` AND o.standing_order = 1`;
+          // Show standing orders AND delivered+unpaid orders older than 2 weeks
+          const twoWeeksAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000).toISOString();
+          sqlQuery += ` AND (
+            o.standing_order = 1
+            OR (
+              o.order_status = 5
+              AND ${hasPaymentStatus ? "o.payment_status" : "'pending'"} NOT IN ('succeeded', 'paid', 'completed')
+              AND o.order_status != 2
+              AND NOT EXISTS (
+                SELECT 1 FROM payment_history ph 
+                WHERE ph.order_id = o.order_id 
+                AND ph.payment_status = 'succeeded'
+              )
+              AND o.delivery_date_time < $${paramIndex}
+            )
+          )`;
+          params.push(twoWeeksAgo);
+          paramIndex++;
         } else if (order_type === 'late') {
           sqlQuery += ` AND o.standing_order = 0 AND o.delivery_date_time < $${paramIndex++} AND o.order_status != 5`;
           params.push(now.toISOString());
