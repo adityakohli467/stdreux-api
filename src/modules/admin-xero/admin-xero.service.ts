@@ -151,10 +151,6 @@ export class AdminXeroService implements OnModuleInit {
       throw new BadRequestException('Order not found');
     }
 
-    if (order.payment_status !== 'succeeded' && order.order_status !== 2) {
-      throw new BadRequestException('Order is not paid. Only paid orders can be synced to Xero.');
-    }
-
     // Check if already synced
     const existingSync = await this.dataSource.query(
       `SELECT xero_invoice_id FROM xero_invoice_sync WHERE order_id = $1`,
