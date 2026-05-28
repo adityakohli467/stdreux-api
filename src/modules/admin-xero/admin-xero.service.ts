@@ -351,6 +351,11 @@ export class AdminXeroService implements OnModuleInit {
     this.xero.setTokenSet(tokenSet);
 
     if (tokenSet.expired()) {
+      if (!tokenSet.refresh_token) {
+        // No refresh token available — user needs to reconnect
+        await this.dataSource.query(`DELETE FROM xero_tokens WHERE id = 1`);
+        throw new BadRequestException('Xero token expired and no refresh token available. Please reconnect Xero.');
+      }
       const newTokenSet = await this.xero.refreshToken();
       // Save the refreshed tokens
       const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
