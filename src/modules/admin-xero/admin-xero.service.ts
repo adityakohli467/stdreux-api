@@ -113,6 +113,16 @@ export class AdminXeroService implements OnModuleInit {
   }
 
   /**
+   * Remove sync record for an order (allows re-syncing)
+   */
+  async removeSyncRecord(orderId: number): Promise<void> {
+    await this.dataSource.query(
+      `DELETE FROM xero_invoice_sync WHERE order_id = $1`,
+      [orderId],
+    );
+  }
+
+  /**
    * Create an invoice in Xero for an order
    */
   async createInvoiceForOrder(orderId: number): Promise<{ invoiceId: string; invoiceNumber: string }> {
@@ -171,7 +181,7 @@ export class AdminXeroService implements OnModuleInit {
       `;
       const products = await this.dataSource.query(productsQuery, [orderId]);
 
-      // Get order product options
+      // Get order product options with pricing
       const optionsQuery = `
         SELECT opo.*
         FROM order_product_option opo
@@ -186,13 +196,22 @@ export class AdminXeroService implements OnModuleInit {
 
       // Build line items
       const lineItems: LineItem[] = products.map((product: any) => {
-        const quantity = product.quantity || 1;
-        const total = parseFloat(product.total) || 0;
-        // Use total/quantity for unit price, or fallback to price column
-        const unitPrice = total > 0 ? total / quantity : (parseFloat(product.price) || 0);
-
-        // Get options for this product to build description
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
+
+        // Calculate total from options if available, otherwise use product total/price
+        let total = 0;
+        let quantity = product.quantity || 1;
+        if (productOptions.length > 0) {
+          // Sum option_price * option_quantity for all options
+          total = productOptions.reduce((sum: number, opt: any) => {
+            return sum + (parseFloat(opt.option_price || 0) * (opt.option_quantity || 1));
+          }, 0);
+        } else {
+          total = parseFloat(product.total) || (parseFloat(product.price) || 0) * quantity;
+        }
+        const unitPrice = quantity > 0 ? total / quantity : total;
+
+        // Build description with options
         const optionDesc = productOptions.map((o: any) => `${o.option_name}: ${o.option_value}`).join(', ');
         const description = optionDesc
           ? `${product.product_name || product.catalog_name || 'Product'} (${optionDesc})`
