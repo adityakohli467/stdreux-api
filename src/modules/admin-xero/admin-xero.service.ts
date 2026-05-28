@@ -113,138 +113,151 @@ export class AdminXeroService implements OnModuleInit {
   }
 
   /**
-   * Create an invoice in Xero for a paid order
+   * Create an invoice in Xero for an order
    */
   async createInvoiceForOrder(orderId: number): Promise<{ invoiceId: string; invoiceNumber: string }> {
-    // Ensure we have valid tokens
-    const tokens = await this.getStoredTokens();
-    if (!tokens) {
-      throw new BadRequestException('Xero is not connected. Please connect Xero first.');
-    }
-    await this.setTokensAndRefreshIfNeeded(tokens);
-    await this.xero.updateTenants();
+    try {
+      // Ensure we have valid tokens
+      const tokens = await this.getStoredTokens();
+      if (!tokens) {
+        throw new BadRequestException('Xero is not connected. Please connect Xero first.');
+      }
+      await this.setTokensAndRefreshIfNeeded(tokens);
+      await this.xero.updateTenants();
 
-    const tenantId = this.xero.tenants[0]?.tenantId;
-    if (!tenantId) {
-      throw new BadRequestException('No Xero organisation found');
-    }
+      const tenantId = this.xero.tenants[0]?.tenantId;
+      if (!tenantId) {
+        throw new BadRequestException('No Xero organisation found');
+      }
 
-    // Get order details with products
-    const orderQuery = `
-      SELECT 
-        o.*,
-        c.firstname as customer_firstname,
-        c.lastname as customer_lastname,
-        c.email as customer_email,
-        c.telephone as customer_telephone,
-        c.customer_address,
-        co.company_name
-      FROM orders o
-      LEFT JOIN customer c ON o.customer_id = c.customer_id
-      LEFT JOIN company co ON c.company_id = co.company_id
-      WHERE o.order_id = $1
-    `;
-    const orderResult = await this.dataSource.query(orderQuery, [orderId]);
-    const order = orderResult[0];
+      // Get order details with products
+      const orderQuery = `
+        SELECT 
+          o.*,
+          c.firstname as customer_firstname,
+          c.lastname as customer_lastname,
+          c.email as customer_email,
+          c.telephone as customer_telephone,
+          c.customer_address,
+          co.company_name
+        FROM orders o
+        LEFT JOIN customer c ON o.customer_id = c.customer_id
+        LEFT JOIN company co ON c.company_id = co.company_id
+        WHERE o.order_id = $1
+      `;
+      const orderResult = await this.dataSource.query(orderQuery, [orderId]);
+      const order = orderResult[0];
 
-    if (!order) {
-      throw new BadRequestException('Order not found');
-    }
+      if (!order) {
+        throw new BadRequestException('Order not found');
+      }
 
-    // Check if already synced
-    const existingSync = await this.dataSource.query(
-      `SELECT xero_invoice_id FROM xero_invoice_sync WHERE order_id = $1`,
-      [orderId],
-    );
-    if (existingSync.length > 0) {
-      throw new BadRequestException(`Order #${orderId} already synced to Xero (Invoice: ${existingSync[0].xero_invoice_id})`);
-    }
+      // Check if already synced
+      const existingSync = await this.dataSource.query(
+        `SELECT xero_invoice_id FROM xero_invoice_sync WHERE order_id = $1`,
+        [orderId],
+      );
+      if (existingSync.length > 0) {
+        throw new BadRequestException(`Order #${orderId} already synced to Xero (Invoice: ${existingSync[0].xero_invoice_id})`);
+      }
 
-    // Get order products
-    const productsQuery = `
-      SELECT op.*, p.product_name as catalog_name
-      FROM order_product op
-      LEFT JOIN products p ON op.product_id = p.product_id
-      WHERE op.order_id = $1
-      ORDER BY op.sort_order
-    `;
-    const products = await this.dataSource.query(productsQuery, [orderId]);
+      // Get order products
+      const productsQuery = `
+        SELECT op.*, p.product_name as catalog_name
+        FROM order_product op
+        LEFT JOIN products p ON op.product_id = p.product_id
+        WHERE op.order_id = $1
+        ORDER BY op.sort_order
+      `;
+      const products = await this.dataSource.query(productsQuery, [orderId]);
 
-    // Create or find contact in Xero
-    const contactName = order.company_name || `${order.customer_firstname || order.firstname || ''} ${order.customer_lastname || order.lastname || ''}`.trim() || `Customer ${order.customer_id}`;
-    const contact = await this.findOrCreateContact(tenantId, contactName, order);
+      // Create or find contact in Xero
+      const contactName = order.company_name || `${order.customer_firstname || order.firstname || ''} ${order.customer_lastname || order.lastname || ''}`.trim() || `Customer ${order.customer_id}`;
+      const contact = await this.findOrCreateContact(tenantId, contactName, order);
 
-    // Build line items
-    const lineItems: LineItem[] = products.map((product: any) => {
-      const unitPrice = parseFloat(product.price) || 0;
-      const quantity = product.quantity || 1;
-      // If exclude_gst = 1, no tax; otherwise apply GST
-      const taxType = product.exclude_gst === 1 ? 'NONE' : 'OUTPUT';
+      // Build line items
+      const lineItems: LineItem[] = products.map((product: any) => {
+        const unitPrice = parseFloat(product.price) || 0;
+        const quantity = product.quantity || 1;
+        // If exclude_gst = 1, no tax; otherwise apply GST
+        const taxType = product.exclude_gst === 1 ? 'NONE' : 'OUTPUT';
+
+        return {
+          description: product.product_name || product.catalog_name || 'Product',
+          quantity,
+          unitAmount: unitPrice,
+          accountCode: '200', // Sales account - adjust if needed
+          taxType,
+        };
+      });
+
+      // Add delivery fee as line item if present
+      if (order.delivery_fee && parseFloat(order.delivery_fee) > 0) {
+        lineItems.push({
+          description: 'Delivery Fee',
+          quantity: 1,
+          unitAmount: parseFloat(order.delivery_fee),
+          accountCode: '200',
+          taxType: 'OUTPUT',
+        });
+      }
+
+      // Apply coupon discount as negative line item
+      if (order.coupon_discount && parseFloat(order.coupon_discount) > 0) {
+        lineItems.push({
+          description: 'Discount',
+          quantity: 1,
+          unitAmount: -parseFloat(order.coupon_discount),
+          accountCode: '200',
+          taxType: 'NONE',
+        });
+      }
+
+      // Determine invoice status based on payment
+      const isPaid = order.payment_status === 'succeeded' || order.payment_status === 'paid' || String(order.payment_status) === '1' || order.order_status === 2;
+      const invoiceStatus = isPaid ? Invoice.StatusEnum.AUTHORISED : Invoice.StatusEnum.SUBMITTED;
+
+      // Create the invoice in Xero
+      const invoice: Invoice = {
+        type: Invoice.TypeEnum.ACCREC, // Sales invoice
+        contact: { contactID: contact.contactID },
+        lineItems,
+        date: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        dueDate: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+        reference: `Order #${orderId}`,
+        status: invoiceStatus,
+        currencyCode: CurrencyCode.AUD,
+      };
+
+      const invoices: Invoices = { invoices: [invoice] };
+      const response = await this.xero.accountingApi.createInvoices(tenantId, invoices);
+      const createdInvoice = response.body.invoices?.[0];
+
+      if (!createdInvoice?.invoiceID) {
+        throw new BadRequestException('Failed to create invoice in Xero');
+      }
+
+      // Record the sync
+      await this.dataSource.query(
+        `INSERT INTO xero_invoice_sync (order_id, xero_invoice_id, xero_invoice_number, xero_contact_id, synced_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)`,
+        [orderId, createdInvoice.invoiceID, createdInvoice.invoiceNumber, contact.contactID],
+      );
+
+      this.logger.log(`Xero invoice created for order #${orderId}: ${createdInvoice.invoiceNumber}`);
 
       return {
-        description: product.product_name || product.catalog_name || 'Product',
-        quantity,
-        unitAmount: unitPrice,
-        accountCode: '200', // Sales account - adjust if needed
-        taxType,
+        invoiceId: createdInvoice.invoiceID,
+        invoiceNumber: createdInvoice.invoiceNumber || '',
       };
-    });
-
-    // Add delivery fee as line item if present
-    if (order.delivery_fee && parseFloat(order.delivery_fee) > 0) {
-      lineItems.push({
-        description: 'Delivery Fee',
-        quantity: 1,
-        unitAmount: parseFloat(order.delivery_fee),
-        accountCode: '200',
-        taxType: 'OUTPUT',
-      });
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      const errorMsg = error?.response?.body?.Message || error?.body?.Message || error?.message || 'Unknown error';
+      this.logger.error(`[Xero] Failed to create invoice for order #${orderId}: ${errorMsg}`, error?.stack);
+      throw new BadRequestException(`Xero sync failed: ${errorMsg}`);
     }
-
-    // Apply coupon discount as negative line item
-    if (order.coupon_discount && parseFloat(order.coupon_discount) > 0) {
-      lineItems.push({
-        description: 'Discount',
-        quantity: 1,
-        unitAmount: -parseFloat(order.coupon_discount),
-        accountCode: '200',
-        taxType: 'NONE',
-      });
-    }
-
-    // Create the invoice in Xero
-    const invoice: Invoice = {
-      type: Invoice.TypeEnum.ACCREC, // Sales invoice
-      contact: { contactID: contact.contactID },
-      lineItems,
-      date: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      dueDate: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      reference: `Order #${orderId}`,
-      status: Invoice.StatusEnum.DRAFT, // DRAFT for now during development; change to AUTHORISED when ready
-      currencyCode: CurrencyCode.AUD,
-    };
-
-    const invoices: Invoices = { invoices: [invoice] };
-    const response = await this.xero.accountingApi.createInvoices(tenantId, invoices);
-    const createdInvoice = response.body.invoices?.[0];
-
-    if (!createdInvoice?.invoiceID) {
-      throw new BadRequestException('Failed to create invoice in Xero');
-    }
-
-    // Record the sync
-    await this.dataSource.query(
-      `INSERT INTO xero_invoice_sync (order_id, xero_invoice_id, xero_invoice_number, xero_contact_id, synced_at)
-       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)`,
-      [orderId, createdInvoice.invoiceID, createdInvoice.invoiceNumber, contact.contactID],
-    );
-
-    this.logger.log(`Xero invoice created for order #${orderId}: ${createdInvoice.invoiceNumber}`);
-
-    return {
-      invoiceId: createdInvoice.invoiceID,
-      invoiceNumber: createdInvoice.invoiceNumber || '',
-    };
   }
 
   /**
