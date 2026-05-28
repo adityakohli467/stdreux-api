@@ -165,7 +165,7 @@ export class AdminXeroService implements OnModuleInit {
       const productsQuery = `
         SELECT op.*, p.product_name as catalog_name
         FROM order_product op
-        LEFT JOIN products p ON op.product_id = p.product_id
+        LEFT JOIN product p ON op.product_id = p.product_id
         WHERE op.order_id = $1
         ORDER BY op.sort_order
       `;
