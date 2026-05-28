@@ -171,23 +171,39 @@ export class AdminXeroService implements OnModuleInit {
       `;
       const products = await this.dataSource.query(productsQuery, [orderId]);
 
+      // Get order product options
+      const optionsQuery = `
+        SELECT opo.*
+        FROM order_product_option opo
+        INNER JOIN order_product op ON opo.order_product_id = op.order_product_id
+        WHERE op.order_id = $1
+      `;
+      const options = await this.dataSource.query(optionsQuery, [orderId]);
+
       // Create or find contact in Xero
       const contactName = order.company_name || `${order.customer_firstname || order.firstname || ''} ${order.customer_lastname || order.lastname || ''}`.trim() || `Customer ${order.customer_id}`;
       const contact = await this.findOrCreateContact(tenantId, contactName, order);
 
       // Build line items
       const lineItems: LineItem[] = products.map((product: any) => {
-        const unitPrice = parseFloat(product.price) || 0;
         const quantity = product.quantity || 1;
-        // If exclude_gst = 1, no tax; otherwise apply GST
-        const taxType = product.exclude_gst === 1 ? 'NONE' : 'OUTPUT';
+        const total = parseFloat(product.total) || 0;
+        // Use total/quantity for unit price, or fallback to price column
+        const unitPrice = total > 0 ? total / quantity : (parseFloat(product.price) || 0);
+
+        // Get options for this product to build description
+        const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
+        const optionDesc = productOptions.map((o: any) => `${o.option_name}: ${o.option_value}`).join(', ');
+        const description = optionDesc
+          ? `${product.product_name || product.catalog_name || 'Product'} (${optionDesc})`
+          : (product.product_name || product.catalog_name || 'Product');
 
         return {
-          description: product.product_name || product.catalog_name || 'Product',
+          description,
           quantity,
           unitAmount: unitPrice,
-          accountCode: '200', // Sales account - adjust if needed
-          taxType,
+          accountCode: '200',
+          taxType: 'NONE',
         };
       });
 
@@ -198,7 +214,7 @@ export class AdminXeroService implements OnModuleInit {
           quantity: 1,
           unitAmount: parseFloat(order.delivery_fee),
           accountCode: '200',
-          taxType: 'OUTPUT',
+          taxType: 'NONE',
         });
       }
 
