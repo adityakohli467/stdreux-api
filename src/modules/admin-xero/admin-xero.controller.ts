@@ -7,6 +7,7 @@ import {
   UseGuards,
   ParseIntPipe,
   BadRequestException,
+  Delete,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { AdminXeroService } from './admin-xero.service';
@@ -76,8 +77,14 @@ export class AdminXeroController {
   @Post('invoice/:orderId')
   @UseGuards(JwtAuthGuard, AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create Xero invoice for a paid order' })
-  async createInvoice(@Param('orderId', ParseIntPipe) orderId: number) {
+  @ApiOperation({ summary: 'Create Xero invoice for an order' })
+  async createInvoice(
+    @Param('orderId', ParseIntPipe) orderId: number,
+    @Query('force') force?: string,
+  ) {
+    if (force === 'true') {
+      await this.xeroService.removeSyncRecord(orderId);
+    }
     const result = await this.xeroService.createInvoiceForOrder(orderId);
     return {
       success: true,

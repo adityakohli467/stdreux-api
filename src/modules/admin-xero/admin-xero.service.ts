@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { XeroClient, Invoice, LineItem, Contact, Invoices, Phone, Contacts, CurrencyCode } from 'xero-node';
 import { DataSource } from 'typeorm';
 import { TokenSet } from 'openid-client';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class AdminXeroService implements OnModuleInit {
@@ -380,6 +381,31 @@ export class AdminXeroService implements OnModuleInit {
       const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
       const tenantId = tenantResult[0]?.tenant_id || '';
       await this.saveTokens(newTokenSet, tenantId);
+    }
+  }
+
+  /**
+   * Proactively refresh Xero token every 7 days to prevent the refresh token from expiring.
+   * Xero refresh tokens expire after 60 days of inactivity — this keeps the connection alive.
+   */
+  @Cron('0 4 */7 * *', { name: 'xero-token-refresh' })
+  async handleScheduledTokenRefresh(): Promise<void> {
+    try {
+      const tokens = await this.getStoredTokens();
+      if (!tokens || !tokens.refresh_token) {
+        return; // No connection, nothing to refresh
+      }
+
+      this.xero.setTokenSet(tokens);
+      const newTokenSet = await this.xero.refreshToken();
+
+      const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
+      const tenantId = tenantResult[0]?.tenant_id || '';
+      await this.saveTokens(newTokenSet, tenantId);
+
+      this.logger.log('Xero token proactively refreshed via cron');
+    } catch (error: any) {
+      this.logger.error('Scheduled Xero token refresh failed:', error.message);
     }
   }
 }
