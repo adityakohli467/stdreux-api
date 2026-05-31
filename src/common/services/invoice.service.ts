@@ -640,25 +640,20 @@ export class InvoiceService {
             extraHeight += 7;
           }
 
-          // Show options if available
+          // Show options as description-only sub-text (no qty/price columns on option rows)
           if (item.options && item.options.length > 0) {
             item.options.forEach((opt: any) => {
-              doc.fontSize(8).font('Helvetica').fillColor('#1a202c');
+              doc.fontSize(7).font('Helvetica').fillColor('#1a202c');
               let optionText = `${opt.option_name}: ${opt.option_value}`;
               doc.text(optionText, 55, tableY + 9 + extraHeight, { width: 295 });
-              // Show option qty and price aligned with columns
-              doc.text(`x${opt.option_quantity}`, 360, tableY + 9 + extraHeight);
-              if (opt.option_price && opt.option_price !== 0) {
-                doc.text(`$${Math.abs(opt.option_price).toFixed(2)}`, 410, tableY + 9 + extraHeight);
-              }
               doc.fillColor(darkGray);
               doc.fontSize(7).font('Helvetica');
               extraHeight += 10;
             });
           }
 
+          // Product-level qty, unit price, total
           doc.text(`x${item.quantity}`, 360, tableY + 1);
-          // Show unit price: if price is 0 but total > 0, calculate from total/quantity
           const unitPrice = item.price > 0 ? item.price : (item.total > 0 && item.quantity > 0 ? item.total / item.quantity : 0);
           doc.text(`$${unitPrice.toFixed(2)}`, 410, tableY + 1);
           doc.font('Helvetica-Bold');
