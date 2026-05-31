@@ -724,6 +724,14 @@ export class InvoiceService {
           doc.text('Amount Paid:', totalsX, currentY, { width: 120, align: 'right' });
           doc.text(`$${data.amount_paid.toFixed(2)}`, totalsX + 130, currentY, { width: 90, align: 'right' });
           currentY += 9;
+
+          if (data.payment_date) {
+            const paidDate = new Date(data.payment_date);
+            const paidDateStr = paidDate.toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
+            doc.text('Paid Date:', totalsX, currentY, { width: 120, align: 'right' });
+            doc.text(paidDateStr, totalsX + 130, currentY, { width: 90, align: 'right' });
+            currentY += 9;
+          }
         }
 
         // Balance
@@ -778,14 +786,12 @@ export class InvoiceService {
               doc.text(`Account Name: ${data.location_account_name}`, 40, footerTextY, { width: 520 });
               footerTextY += 8;
             }
-            if (data.location_bsb) {
-              doc.text(`BSB: ${data.location_bsb}`, 40, footerTextY, { width: 260 });
-              if (data.location_account_number) {
-                doc.text(`Account Number: ${data.location_account_number}`, 260, footerTextY, { width: 260 });
-              }
-              footerTextY += 8;
-            } else if (data.location_account_number) {
+            if (data.location_account_number) {
               doc.text(`Account Number: ${data.location_account_number}`, 40, footerTextY, { width: 520 });
+              footerTextY += 8;
+            }
+            if (data.location_bsb) {
+              doc.text(`BSB: ${data.location_bsb}`, 40, footerTextY, { width: 520 });
               footerTextY += 8;
             }
             footerTextY += 3;
