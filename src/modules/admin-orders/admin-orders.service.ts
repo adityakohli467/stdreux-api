@@ -237,33 +237,15 @@ export class AdminOrdersService implements OnModuleInit {
       const productsQuery = `
         SELECT 
           op.order_id,
-          op.order_product_id,
-          op.price as product_price,
-          op.total as product_total,
-          COALESCE((
-            SELECT SUM(opo.option_price * opo.option_quantity)
-            FROM order_product_option opo
-            WHERE opo.order_product_id = op.order_product_id
-          ), 0) as options_total
+          SUM(op.total) as order_subtotal
         FROM order_product op
         WHERE op.order_id = ANY($1)
+        GROUP BY op.order_id
       `;
       const productsResult = await this.dataSource.query(productsQuery, [orderIds]);
 
       productsResult.forEach((row: any) => {
-        if (!productsMap.has(row.order_id)) {
-          productsMap.set(row.order_id, 0);
-        }
-        const currentSubtotal = productsMap.get(row.order_id);
-        const productBaseTotal = parseFloat(row.product_total || 0);
-        const optionsTotal = parseFloat(row.options_total || 0);
-        const productPrice = parseFloat(row.product_price || 0);
-        
-        // If product price is 0, option pricing is already included in product total (variant-based pricing)
-        // If product price > 0, options are true add-ons and should be added on top
-        const itemTotal = (productPrice === 0 && optionsTotal > 0) ? productBaseTotal : (productBaseTotal + optionsTotal);
-        
-        productsMap.set(row.order_id, currentSubtotal + itemTotal);
+        productsMap.set(row.order_id, parseFloat(row.order_subtotal || 0));
       });
     }
 
@@ -440,19 +422,7 @@ export class AdminOrdersService implements OnModuleInit {
     let subtotal = 0;
     if (Array.isArray(orderProducts) && orderProducts.length > 0) {
       for (const product of orderProducts) {
-        let productBaseTotal = parseFloat(product.total || 0);
-        let optionsTotal = 0;
-        const productPrice = parseFloat(product.price || 0);
-        
-        if (product.options && Array.isArray(product.options)) {
-          for (const option of product.options) {
-            optionsTotal += (parseFloat(option.option_price) || 0) * (parseInt(option.option_quantity) || 1);
-          }
-        }
-        
-        // If product price is 0, option pricing is already included in product total (variant-based pricing)
-        // If product price > 0, options are true add-ons and should be added on top
-        subtotal += (productPrice === 0 && optionsTotal > 0) ? productBaseTotal : (productBaseTotal + optionsTotal);
+        subtotal += parseFloat(product.total || 0);
       }
     }
 
@@ -614,24 +584,23 @@ export class AdminOrdersService implements OnModuleInit {
       const customerType = customer?.customer_type || 'Retail';
       const isWholesale = customerType && (customerType.includes('Wholesale') || customerType.includes('Wholesaler'));
 
-      // Calculate totals
-      // Calculate totals including options/add-ons
+      // Calculate totals - product.total = final line total including options
       let subtotal = 0;
       for (const product of products) {
         const productPrice = parseFloat(product.price) || 0;
-        let productBaseTotal = productPrice * (parseInt(product.quantity) || 0);
+        const qty = parseInt(product.quantity) || 1;
         let optionsTotal = 0;
         const options = product.add_ons || product.options || [];
         
         if (Array.isArray(options)) {
           for (const addon of options) {
-            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || 1);
+            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
           }
         }
         
-        // If product price is 0, option pricing IS the product pricing (variant-based)
-        // If product price > 0, options are true add-ons and should be added on top
-        subtotal += (productPrice === 0 && optionsTotal > 0) ? optionsTotal : (productBaseTotal + optionsTotal);
+        // Line total: base price + options. For variant products (price=0), options ARE the pricing
+        const lineTotal = (productPrice * qty) + optionsTotal;
+        subtotal += lineTotal;
       }
 
       let wholesaleDiscount = 0;
@@ -746,9 +715,20 @@ export class AdminOrdersService implements OnModuleInit {
       // Create order products
       for (let index = 0; index < products.length; index++) {
         const product = products[index];
-        const productTotal = (product.price || 0) * (product.quantity || 0);
-        const sortOrder = product.sort_order !== undefined ? product.sort_order : index + 1; // Use provided sort_order or index + 1
-        const excludeGst = product.exclude_gst !== undefined ? product.exclude_gst : 0; // Default to 0 (include GST)
+        const qty = parseInt(product.quantity) || 1;
+        const productPrice = parseFloat(product.price) || 0;
+        const sortOrder = product.sort_order !== undefined ? product.sort_order : index + 1;
+        const excludeGst = product.exclude_gst !== undefined ? product.exclude_gst : 0;
+
+        // Calculate the full line total including options
+        let optionsTotal = 0;
+        const addOns = product.add_ons || product.options || [];
+        if (Array.isArray(addOns)) {
+          for (const addon of addOns) {
+            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
+          }
+        }
+        const productTotal = (productPrice * qty) + optionsTotal;
 
         const orderProductResult = await queryRunner.query(
           `INSERT INTO order_product (order_id, product_id, quantity, price, total, order_product_comment, sort_order, exclude_gst)
@@ -757,8 +737,8 @@ export class AdminOrdersService implements OnModuleInit {
           [
             order.order_id,
             product.product_id,
-            product.quantity || 1,
-            product.price || 0,
+            qty,
+            productPrice,
             productTotal,
             product.comment?.trim() || null,
             sortOrder,
@@ -769,9 +749,9 @@ export class AdminOrdersService implements OnModuleInit {
         const orderProductId = orderProductResult[0].order_product_id;
 
         // Create order product options
-        if (product.add_ons && Array.isArray(product.add_ons)) {
-          for (const addon of product.add_ons) {
-            const optionQuantity = addon.option_quantity || 1;
+        if (Array.isArray(addOns)) {
+          for (const addon of addOns) {
+            const optionQuantity = parseInt(addon.option_quantity) || qty;
             const optionPrice = parseFloat(addon.option_price || 0);
             const optionTotal = optionQuantity * optionPrice;
 
@@ -851,24 +831,22 @@ export class AdminOrdersService implements OnModuleInit {
       const customerType = customer?.customer_type || 'Retail';
       const isWholesale = customerType && (customerType.includes('Wholesale') || customerType.includes('Wholesaler'));
 
-      // Calculate totals
-      // Calculate totals including options/add-ons
+      // Calculate totals - product.total = final line total including options
       let subtotal = 0;
       for (const product of products) {
         const productPrice = parseFloat(product.price) || 0;
-        const productBaseTotal = productPrice * (parseInt(product.quantity) || 0);
+        const qty = parseInt(product.quantity) || 1;
         let optionsTotal = 0;
         const options = product.add_ons || product.options || [];
         
         if (Array.isArray(options)) {
           for (const addon of options) {
-            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || 1);
+            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
           }
         }
         
-        // If product price is 0, option pricing IS the product pricing (variant-based)
-        // If product price > 0, options are true add-ons and should be added on top
-        subtotal += (productPrice === 0 && optionsTotal > 0) ? optionsTotal : (productBaseTotal + optionsTotal);
+        // Line total: base price + options. For variant products (price=0), options ARE the pricing
+        subtotal += (productPrice * qty) + optionsTotal;
       }
 
       let wholesaleDiscount = 0;
@@ -1012,9 +990,20 @@ export class AdminOrdersService implements OnModuleInit {
       // Create updated order products
       for (let index = 0; index < products.length; index++) {
         const product = products[index];
-        const productTotal = (product.price || 0) * (product.quantity || 0);
+        const qty = parseInt(product.quantity) || 1;
+        const productPrice = parseFloat(product.price) || 0;
         const sortOrder = product.sort_order !== undefined ? product.sort_order : index + 1;
         const excludeGst = product.exclude_gst !== undefined ? product.exclude_gst : 0;
+
+        // Calculate the full line total including options
+        let optionsTotal = 0;
+        const addOns = product.add_ons || product.options || [];
+        if (Array.isArray(addOns)) {
+          for (const addon of addOns) {
+            optionsTotal += (parseFloat(addon.option_price || addon.price || 0)) * (parseInt(addon.option_quantity || addon.quantity) || qty);
+          }
+        }
+        const productTotal = (productPrice * qty) + optionsTotal;
 
         const orderProductResult = await queryRunner.query(
           `INSERT INTO order_product (order_id, product_id, quantity, price, total, order_product_comment, sort_order, exclude_gst)
@@ -1023,8 +1012,8 @@ export class AdminOrdersService implements OnModuleInit {
           [
             id,
             product.product_id,
-            product.quantity,
-            product.price,
+            qty,
+            productPrice,
             productTotal,
             product.comment || null,
             sortOrder,
@@ -1035,9 +1024,9 @@ export class AdminOrdersService implements OnModuleInit {
         const orderProductId = orderProductResult[0].order_product_id;
 
         // Save product options/add-ons
-        if (product.add_ons && Array.isArray(product.add_ons)) {
-          for (const addon of product.add_ons) {
-            const optionQuantity = addon.option_quantity || addon.quantity || 1;
+        if (Array.isArray(addOns)) {
+          for (const addon of addOns) {
+            const optionQuantity = parseInt(addon.option_quantity || addon.quantity) || qty;
             const optionPrice = parseFloat(addon.option_price || addon.price || 0);
             const optionTotal = optionQuantity * optionPrice;
 
@@ -1438,6 +1427,118 @@ export class AdminOrdersService implements OnModuleInit {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  /**
+   * One-time fix: Recalculate order_product.total for all orders where
+   * the stored total doesn't match the correct calculation.
+   * This fixes orders created before the bug fix where:
+   * - Variant products (price=0) had total stored as 0
+   * - Admin orders didn't include option prices in the total
+   */
+  async fixOrderProductTotals(): Promise<any> {
+    // Find order_products where price=0 AND total=0 but they have options with prices
+    const brokenProducts = await this.dataSource.query(`
+      SELECT op.order_product_id, op.order_id, op.quantity, op.price, op.total,
+        COALESCE((
+          SELECT SUM(opo.option_price * opo.option_quantity)
+          FROM order_product_option opo
+          WHERE opo.order_product_id = op.order_product_id
+        ), 0) as options_total
+      FROM order_product op
+      WHERE op.price = 0 AND op.total = 0
+        AND EXISTS (
+          SELECT 1 FROM order_product_option opo
+          WHERE opo.order_product_id = op.order_product_id AND opo.option_price > 0
+        )
+    `);
+
+    let fixedCount = 0;
+    for (const row of brokenProducts) {
+      // For variant products: total = option_price * product_qty
+      // But option_quantity might be stored as 1 (per-unit), so recalculate from options
+      const optionsResult = await this.dataSource.query(`
+        SELECT option_price, option_quantity
+        FROM order_product_option
+        WHERE order_product_id = $1
+      `, [row.order_product_id]);
+
+      let correctTotal = 0;
+      const qty = parseInt(row.quantity) || 1;
+      for (const opt of optionsResult) {
+        const optPrice = parseFloat(opt.option_price) || 0;
+        const optQty = parseInt(opt.option_quantity) || 1;
+        // If option_quantity < product quantity, it was stored per-unit — multiply by product qty
+        const effectiveQty = optQty < qty ? qty : optQty;
+        correctTotal += optPrice * effectiveQty;
+
+        // Also fix the option_quantity if it was stored incorrectly
+        if (optQty < qty) {
+          await this.dataSource.query(`
+            UPDATE order_product_option SET option_quantity = $1, option_total = $2
+            WHERE order_product_id = $3 AND option_price = $4
+          `, [qty, optPrice * qty, row.order_product_id, optPrice]);
+        }
+      }
+
+      if (correctTotal > 0) {
+        await this.dataSource.query(`
+          UPDATE order_product SET total = $1 WHERE order_product_id = $2
+        `, [correctTotal, row.order_product_id]);
+
+        // Also update the order's order_total
+        const orderSubtotal = await this.dataSource.query(`
+          SELECT SUM(total) as subtotal FROM order_product WHERE order_id = $1
+        `, [row.order_id]);
+        const newSubtotal = parseFloat(orderSubtotal[0]?.subtotal || 0);
+        const orderInfo = await this.dataSource.query(`
+          SELECT delivery_fee, coupon_discount FROM orders WHERE order_id = $1
+        `, [row.order_id]);
+        const deliveryFee = parseFloat(orderInfo[0]?.delivery_fee || 0);
+        const couponDiscount = parseFloat(orderInfo[0]?.coupon_discount || 0);
+        const newTotal = Math.round((newSubtotal - couponDiscount + deliveryFee) * 100) / 100;
+
+        await this.dataSource.query(`
+          UPDATE orders SET order_total = $1 WHERE order_id = $2
+        `, [newTotal, row.order_id]);
+
+        fixedCount++;
+      }
+    }
+
+    // Also fix orders where price > 0 but total doesn't include options
+    const addOnBroken = await this.dataSource.query(`
+      SELECT op.order_product_id, op.order_id, op.quantity, op.price, op.total,
+        COALESCE((
+          SELECT SUM(opo.option_price * opo.option_quantity)
+          FROM order_product_option opo
+          WHERE opo.order_product_id = op.order_product_id
+        ), 0) as options_total
+      FROM order_product op
+      WHERE op.price > 0
+        AND op.total = op.price * op.quantity
+        AND EXISTS (
+          SELECT 1 FROM order_product_option opo
+          WHERE opo.order_product_id = op.order_product_id AND opo.option_price > 0
+        )
+    `);
+
+    for (const row of addOnBroken) {
+      const correctTotal = (parseFloat(row.price) * parseInt(row.quantity)) + parseFloat(row.options_total);
+      if (Math.abs(correctTotal - parseFloat(row.total)) > 0.01) {
+        await this.dataSource.query(`
+          UPDATE order_product SET total = $1 WHERE order_product_id = $2
+        `, [correctTotal, row.order_product_id]);
+        fixedCount++;
+      }
+    }
+
+    return {
+      message: `Fixed ${fixedCount} order products (${brokenProducts.length} variant, ${addOnBroken.length} add-on checked)`,
+      variant_products_found: brokenProducts.length,
+      addon_products_checked: addOnBroken.length,
+      total_fixed: fixedCount,
+    };
   }
 
   async getStats(): Promise<any> {

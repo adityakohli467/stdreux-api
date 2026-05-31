@@ -228,19 +228,18 @@ export class AdminQuotesService {
 
       let subtotal = 0;
       for (const product of products) {
-        let productBaseTotal = (parseFloat(product.price) || 0) * (parseInt(product.quantity) || 0);
+        const productPrice = parseFloat(product.price) || 0;
+        const qty = parseInt(product.quantity) || 1;
         let optionsTotal = 0;
         const options = product.options || product.add_ons || [];
         
         if (Array.isArray(options)) {
           for (const addon of options) {
-            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || 1);
+            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
           }
         }
         
-        // If the base product price is the same as the options total, assume it's already included
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        subtotal += isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        subtotal += (productPrice * qty) + optionsTotal;
       }
       const orderTotal = Math.round((subtotal + parseFloat(delivery_fee)) * 100) / 100;
 
@@ -276,16 +275,16 @@ export class AdminQuotesService {
       const orderId = orderResult[0].order_id;
       for (let i = 0; i < products.length; i++) {
         const product = products[i];
-        const productBaseTotal = parseFloat(product.price || 0) * parseInt(product.quantity || 1);
+        const productPrice = parseFloat(product.price || 0);
+        const qty = parseInt(product.quantity || 1);
         const productOptions = product.options || product.add_ons || [];
         let productOptionsTotal = 0;
         if (Array.isArray(productOptions)) {
           for (const opt of productOptions) {
-            productOptionsTotal += (parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || 1);
+            productOptionsTotal += (parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || qty);
           }
         }
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - productOptionsTotal) < 0.01;
-        const productTotal = isDoubleCount ? productBaseTotal : (productBaseTotal + productOptionsTotal);
+        const productTotal = (productPrice * qty) + productOptionsTotal;
         
         const orderProductResult = await manager.query(
           `INSERT INTO order_product (order_id, product_id, quantity, price, total, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING order_product_id`,
@@ -297,6 +296,8 @@ export class AdminQuotesService {
         const options = product.options || product.add_ons || [];
         if (Array.isArray(options)) {
           for (const option of options) {
+            const optQty = parseInt(option.option_quantity) || qty;
+            const optPrice = parseFloat(option.option_price) || 0;
             await manager.query(
               `INSERT INTO order_product_option (
                 order_id, order_product_id, product_option_id, option_name, option_value,
@@ -308,9 +309,9 @@ export class AdminQuotesService {
                 option.product_option_id || option.option_value_id || 0,
                 option.option_name || '',
                 option.option_value || '',
-                option.option_quantity || 1,
-                option.option_price || 0,
-                (parseFloat(option.option_price) || 0) * (parseInt(option.option_quantity) || 1)
+                optQty,
+                optPrice,
+                optPrice * optQty
               ]
             );
           }
@@ -338,19 +339,18 @@ export class AdminQuotesService {
 
       let subtotal = 0;
       for (const product of products) {
-        let productBaseTotal = (parseFloat(product.price) || 0) * (parseInt(product.quantity) || 0);
+        const productPrice = parseFloat(product.price) || 0;
+        const qty = parseInt(product.quantity) || 1;
         let optionsTotal = 0;
         const options = product.options || product.add_ons || [];
         
         if (Array.isArray(options)) {
           for (const addon of options) {
-            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || 1);
+            optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
           }
         }
         
-        // Check for double counting
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        subtotal += isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        subtotal += (productPrice * qty) + optionsTotal;
       }
       const orderTotal = Math.round((subtotal + parseFloat(delivery_fee)) * 100) / 100;
 
@@ -397,20 +397,20 @@ export class AdminQuotesService {
       // Save new products and options
       for (let i = 0; i < products.length; i++) {
         const product = products[i];
-        const productBaseTotal = parseFloat(product.price || 0) * parseInt(product.quantity || 1);
+        const productPrice = parseFloat(product.price || 0);
+        const qty = parseInt(product.quantity || 1);
         const productOptions = product.options || product.add_ons || [];
         let productOptionsTotal = 0;
         if (Array.isArray(productOptions)) {
           for (const opt of productOptions) {
-            productOptionsTotal += (parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || 1);
+            productOptionsTotal += (parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || qty);
           }
         }
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - productOptionsTotal) < 0.01;
-        const productTotal = isDoubleCount ? productBaseTotal : (productBaseTotal + productOptionsTotal);
+        const productTotal = (productPrice * qty) + productOptionsTotal;
         
         const orderProductResult = await manager.query(
           `INSERT INTO order_product (order_id, product_id, quantity, price, total, sort_order) VALUES ($1, $2, $3, $4, $5, $6) RETURNING order_product_id`,
-          [id, product.product_id, product.quantity, product.price, productTotal, i + 1]
+          [id, product.product_id, qty, productPrice, productTotal, i + 1]
         );
         const orderProductId = orderProductResult[0].order_product_id;
 
@@ -418,6 +418,8 @@ export class AdminQuotesService {
         const options = product.options || product.add_ons || [];
         if (Array.isArray(options)) {
           for (const option of options) {
+            const optQty = parseInt(option.option_quantity) || qty;
+            const optPrice = parseFloat(option.option_price) || 0;
             await manager.query(
               `INSERT INTO order_product_option (
                 order_id, order_product_id, product_option_id, option_name, option_value,
@@ -429,9 +431,9 @@ export class AdminQuotesService {
                 option.product_option_id || option.option_value_id || 0,
                 option.option_name || '',
                 option.option_value || '',
-                option.option_quantity || 1,
-                option.option_price || 0,
-                (parseFloat(option.option_price) || 0) * (parseInt(option.option_quantity) || 1)
+                optQty,
+                optPrice,
+                optPrice * optQty
               ]
             );
           }

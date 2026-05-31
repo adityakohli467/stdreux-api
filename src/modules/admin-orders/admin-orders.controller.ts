@@ -29,6 +29,12 @@ export class AdminOrdersController {
     return this.adminOrdersService.getStats();
   }
 
+  @Post('fix-totals')
+  @ApiOperation({ summary: 'Recalculate and fix order_product.total for all orders with incorrect totals' })
+  async fixTotals() {
+    return this.adminOrdersService.fixOrderProductTotals();
+  }
+
   @Get('st-druex')
   @ApiOperation({ summary: 'Get St Druex orders' })
   @ApiQuery({ name: 'limit', required: false, type: Number })

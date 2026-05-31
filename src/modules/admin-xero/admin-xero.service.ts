@@ -195,26 +195,11 @@ export class AdminXeroService implements OnModuleInit {
       const contactName = order.company_name || `${order.customer_firstname || order.firstname || ''} ${order.customer_lastname || order.lastname || ''}`.trim() || `Customer ${order.customer_id}`;
       const contact = await this.findOrCreateContact(tenantId, contactName, order);
 
-      // Build line items
+      // Build line items - order_product.total is always the final line total
       const lineItems: LineItem[] = products.map((product: any) => {
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
-        const productPrice = parseFloat(product.price) || 0;
         let quantity = product.quantity || 1;
-
-        let total = 0;
-        if (productPrice === 0 && productOptions.length > 0) {
-          // Variant-based pricing: total already includes option pricing
-          total = parseFloat(product.total) || 0;
-        } else if (productOptions.length > 0) {
-          // Product has base price + add-on options
-          const baseTotal = productPrice * quantity;
-          const optionsTotal = productOptions.reduce((sum: number, opt: any) => {
-            return sum + (parseFloat(opt.option_price || 0) * (opt.option_quantity || 1));
-          }, 0);
-          total = baseTotal + optionsTotal;
-        } else {
-          total = parseFloat(product.total) || productPrice * quantity;
-        }
+        const total = parseFloat(product.total) || 0;
         const unitPrice = quantity > 0 ? total / quantity : total;
 
         // Build description with options

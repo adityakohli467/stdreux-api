@@ -204,19 +204,9 @@ export class InvoiceService {
     let subtotal = 0;
     let totalGst = 0;
     const itemsWithOptions = itemsResult.map((row: any) => {
-      const productBaseTotal = parseFloat(row.total) || 0;
-      const productPrice = parseFloat(row.price) || 0;
+      const itemTotal = parseFloat(row.total) || 0;
       const productOptions = optionsResult.filter((opt: any) => opt.order_product_id === row.order_product_id);
       
-      // Calculate options total
-      let optionsTotal = 0;
-      productOptions.forEach((opt: any) => {
-        optionsTotal += (parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || 1);
-      });
-
-      // If product price is 0, option pricing is already included in product total (variant-based pricing)
-      // If product price > 0, options are true add-ons and should be added on top
-      const itemTotal = (productPrice === 0 && optionsTotal > 0) ? productBaseTotal : (productBaseTotal + optionsTotal);
       subtotal += itemTotal;
 
       // Calculate GST for ANCILLARIES and PACKAGING categories
