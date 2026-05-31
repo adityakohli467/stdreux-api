@@ -198,17 +198,22 @@ export class AdminXeroService implements OnModuleInit {
       // Build line items
       const lineItems: LineItem[] = products.map((product: any) => {
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
-
-        // Calculate total from options if available, otherwise use product total/price
-        let total = 0;
+        const productPrice = parseFloat(product.price) || 0;
         let quantity = product.quantity || 1;
-        if (productOptions.length > 0) {
-          // Sum option_price * option_quantity for all options
-          total = productOptions.reduce((sum: number, opt: any) => {
+
+        let total = 0;
+        if (productPrice === 0 && productOptions.length > 0) {
+          // Variant-based pricing: total already includes option pricing
+          total = parseFloat(product.total) || 0;
+        } else if (productOptions.length > 0) {
+          // Product has base price + add-on options
+          const baseTotal = productPrice * quantity;
+          const optionsTotal = productOptions.reduce((sum: number, opt: any) => {
             return sum + (parseFloat(opt.option_price || 0) * (opt.option_quantity || 1));
           }, 0);
+          total = baseTotal + optionsTotal;
         } else {
-          total = parseFloat(product.total) || (parseFloat(product.price) || 0) * quantity;
+          total = parseFloat(product.total) || productPrice * quantity;
         }
         const unitPrice = quantity > 0 ? total / quantity : total;
 

@@ -238,6 +238,7 @@ export class AdminOrdersService implements OnModuleInit {
         SELECT 
           op.order_id,
           op.order_product_id,
+          op.price as product_price,
           op.total as product_total,
           COALESCE((
             SELECT SUM(opo.option_price * opo.option_quantity)
@@ -256,10 +257,11 @@ export class AdminOrdersService implements OnModuleInit {
         const currentSubtotal = productsMap.get(row.order_id);
         const productBaseTotal = parseFloat(row.product_total || 0);
         const optionsTotal = parseFloat(row.options_total || 0);
+        const productPrice = parseFloat(row.product_price || 0);
         
-        // Check for double counting
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        const itemTotal = isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        // If product price is 0, option pricing is already included in product total (variant-based pricing)
+        // If product price > 0, options are true add-ons and should be added on top
+        const itemTotal = (productPrice === 0 && optionsTotal > 0) ? productBaseTotal : (productBaseTotal + optionsTotal);
         
         productsMap.set(row.order_id, currentSubtotal + itemTotal);
       });
@@ -440,6 +442,7 @@ export class AdminOrdersService implements OnModuleInit {
       for (const product of orderProducts) {
         let productBaseTotal = parseFloat(product.total || 0);
         let optionsTotal = 0;
+        const productPrice = parseFloat(product.price || 0);
         
         if (product.options && Array.isArray(product.options)) {
           for (const option of product.options) {
@@ -447,10 +450,9 @@ export class AdminOrdersService implements OnModuleInit {
           }
         }
         
-        // If the base product price is the same as the options total, assume it's already included
-        // (This happens in variant-based pricing scenarios)
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        subtotal += isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        // If product price is 0, option pricing is already included in product total (variant-based pricing)
+        // If product price > 0, options are true add-ons and should be added on top
+        subtotal += (productPrice === 0 && optionsTotal > 0) ? productBaseTotal : (productBaseTotal + optionsTotal);
       }
     }
 
@@ -616,7 +618,8 @@ export class AdminOrdersService implements OnModuleInit {
       // Calculate totals including options/add-ons
       let subtotal = 0;
       for (const product of products) {
-        let productBaseTotal = (parseFloat(product.price) || 0) * (parseInt(product.quantity) || 0);
+        const productPrice = parseFloat(product.price) || 0;
+        let productBaseTotal = productPrice * (parseInt(product.quantity) || 0);
         let optionsTotal = 0;
         const options = product.add_ons || product.options || [];
         
@@ -626,9 +629,9 @@ export class AdminOrdersService implements OnModuleInit {
           }
         }
         
-        // Check for double counting
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        subtotal += isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        // If product price is 0, option pricing IS the product pricing (variant-based)
+        // If product price > 0, options are true add-ons and should be added on top
+        subtotal += (productPrice === 0 && optionsTotal > 0) ? optionsTotal : (productBaseTotal + optionsTotal);
       }
 
       let wholesaleDiscount = 0;
@@ -852,7 +855,8 @@ export class AdminOrdersService implements OnModuleInit {
       // Calculate totals including options/add-ons
       let subtotal = 0;
       for (const product of products) {
-        const productBaseTotal = (parseFloat(product.price) || 0) * (parseInt(product.quantity) || 0);
+        const productPrice = parseFloat(product.price) || 0;
+        const productBaseTotal = productPrice * (parseInt(product.quantity) || 0);
         let optionsTotal = 0;
         const options = product.add_ons || product.options || [];
         
@@ -862,9 +866,9 @@ export class AdminOrdersService implements OnModuleInit {
           }
         }
         
-        // Check for double counting (variant price sent as both base price and option price)
-        const isDoubleCount = productBaseTotal > 0 && Math.abs(productBaseTotal - optionsTotal) < 0.01;
-        subtotal += isDoubleCount ? productBaseTotal : (productBaseTotal + optionsTotal);
+        // If product price is 0, option pricing IS the product pricing (variant-based)
+        // If product price > 0, options are true add-ons and should be added on top
+        subtotal += (productPrice === 0 && optionsTotal > 0) ? optionsTotal : (productBaseTotal + optionsTotal);
       }
 
       let wholesaleDiscount = 0;
