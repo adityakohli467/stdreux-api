@@ -667,15 +667,10 @@ export class InvoiceService {
             });
           }
 
-          doc.text(item.options && item.options.length > 0 ? '-' : item.quantity.toString(), 360, tableY + 1);
-          // Hide unit price for products with options (it's shown per-option instead)
-          if (item.options && item.options.length > 0) {
-            doc.text('-', 410, tableY + 1);
-          } else {
-            // Fix unit price: if price is 0 but total > 0, calculate from total/quantity
-            const unitPrice = item.price > 0 ? item.price : (item.total > 0 && item.quantity > 0 ? item.total / item.quantity : 0);
-            doc.text(`$${unitPrice.toFixed(2)}`, 410, tableY + 1);
-          }
+          doc.text(`x${item.quantity}`, 360, tableY + 1);
+          // Show unit price: if price is 0 but total > 0, calculate from total/quantity
+          const unitPrice = item.price > 0 ? item.price : (item.total > 0 && item.quantity > 0 ? item.total / item.quantity : 0);
+          doc.text(`$${unitPrice.toFixed(2)}`, 410, tableY + 1);
           doc.font('Helvetica-Bold');
           doc.text(`$${item.total.toFixed(2)}`, 500, tableY + 1, { align: 'right', width: 60 });
           doc.font('Helvetica');
