@@ -90,6 +90,22 @@ export class StorePaymentController {
     return this.storePaymentService.verifyPayment(data);
   }
 
+  @Post('cancel-intent')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiOperation({ summary: 'Cancel a stale Stripe Payment Intent' })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        payment_intent_id: { type: 'string' },
+      },
+      required: ['payment_intent_id'],
+    },
+  })
+  async cancelPaymentIntent(@Body() data: { payment_intent_id: string }) {
+    return this.storePaymentService.cancelPaymentIntent(data.payment_intent_id);
+  }
+
   @Post('stripe/webhook')
   @ApiOperation({ summary: 'Handle Stripe webhooks' })
   async handleStripeWebhook(

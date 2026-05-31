@@ -295,6 +295,19 @@ export class StorePaymentService {
   }
 
   /**
+   * Cancel a stale Payment Intent
+   * POST /store/payment/cancel-intent
+   */
+  async cancelPaymentIntent(paymentIntentId: string) {
+    if (!paymentIntentId) {
+      throw new BadRequestException("Payment Intent ID is required");
+    }
+
+    const result = await this.stripeService.cancelPaymentIntent(paymentIntentId);
+    return { success: result.success, status: result.status };
+  }
+
+  /**
    * Verify Stripe payment after client-side confirmation
    * POST /store/payment/verify
    */

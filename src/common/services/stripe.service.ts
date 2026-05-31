@@ -194,6 +194,34 @@ export class StripeService {
   }
 
   /**
+   * Cancel a Payment Intent (only if it hasn't succeeded)
+   */
+  async cancelPaymentIntent(paymentIntentId: string): Promise<{ success: boolean; status: string }> {
+    await this.initialize();
+
+    if (!this.stripe) {
+      throw new Error('Stripe not initialized. Please configure Stripe secret key.');
+    }
+
+    try {
+      const paymentIntent = await this.stripe.paymentIntents.retrieve(paymentIntentId);
+
+      // Only cancel if not already succeeded or canceled
+      if (paymentIntent.status === 'succeeded' || paymentIntent.status === 'canceled') {
+        return { success: true, status: paymentIntent.status };
+      }
+
+      const canceled = await this.stripe.paymentIntents.cancel(paymentIntentId);
+      this.logger.log(`[Stripe] Canceled payment intent: ${paymentIntentId}`);
+      return { success: true, status: canceled.status };
+    } catch (error: any) {
+      this.logger.warn(`[Stripe] Failed to cancel intent ${paymentIntentId}: ${error.message}`);
+      // Don't throw - cancellation failure is non-critical
+      return { success: false, status: 'cancel_failed' };
+    }
+  }
+
+  /**
    * Create a refund
    */
   async createRefund(
