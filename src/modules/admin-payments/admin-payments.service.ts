@@ -104,6 +104,7 @@ export class AdminPaymentsService {
         o.payment_status,
         o.customer_id,
         o.delivery_fee,
+        o.coupon_discount,
         c.email as customer_email,
         c.firstname,
         c.lastname,
@@ -140,8 +141,20 @@ export class AdminPaymentsService {
     // Initialize Stripe service
     await this.stripeService.initialize();
 
-    // Calculate total amount (convert to cents for Stripe)
-    const totalAmount = parseFloat(order.order_total || 0);
+    // Recalculate total from order_product rows to ensure consistency with edited orders
+    const productTotalQuery = `
+      SELECT COALESCE(SUM(op.total), 0) as subtotal
+      FROM order_product op
+      WHERE op.order_id = $1
+    `;
+    const productTotalResult = await this.dataSource.query(productTotalQuery, [orderId]);
+    const subtotalFromProducts = parseFloat(productTotalResult[0]?.subtotal || 0);
+    const deliveryFee = parseFloat(order.delivery_fee || 0);
+    const couponDiscount = parseFloat(order.coupon_discount || 0);
+    const recalculatedTotal = Math.max(0, subtotalFromProducts + deliveryFee - couponDiscount);
+
+    // Use recalculated total (more reliable than stored order_total after edits)
+    const totalAmount = recalculatedTotal > 0 ? recalculatedTotal : parseFloat(order.order_total || 0);
     const totalAmountCents = Math.round(totalAmount * 100);
 
     if (totalAmountCents <= 0) {
