@@ -84,71 +84,122 @@ describe('Order Quantity - Portal (store-orders)', () => {
 });
 
 describe('Order Quantity - Admin (new order / edit order)', () => {
-  describe('Creating new order with options', () => {
+  describe('Creating new order - VARIANT product (price=0, options have prices)', () => {
+    it('should set order_product.quantity = sum of option quantities', () => {
+      const product = { product_id: 1, quantity: 1, price: 0 }; // qty=1 (hidden in UI for variants)
+      const addons = [
+        { option_name: '250G', quantity: 2, price: 14.25 },
+        { option_name: '1kg', quantity: 3, price: 39.00 },
+      ];
+      const isVariant = product.price === 0 && addons.length > 0;
+      // For variant: product qty = sum of option quantities
+      const productQuantity = isVariant
+        ? addons.reduce((sum, a) => sum + (a.quantity || 1), 0)
+        : product.quantity;
+      expect(productQuantity).toBe(5); // 2 + 3 = 5
+    });
+
+    it('should NOT multiply option_quantity for variant products', () => {
+      const product = { product_id: 1, quantity: 1, price: 0 };
+      const addon = { option_name: '250G', quantity: 2, price: 14.25 };
+      const isVariant = product.price === 0;
+      const option_quantity = isVariant ? (addon.quantity || 1) : (addon.quantity || 1) * product.quantity;
+      expect(option_quantity).toBe(2); // Direct value, no multiplication
+    });
+
+    it('should calculate correct total for variant product', () => {
+      const options = [
+        { option_quantity: 2, option_price: 14.25 },
+        { option_quantity: 3, option_price: 39.00 },
+      ];
+      const optionsTotal = options.reduce((sum, o) => sum + o.option_price * o.option_quantity, 0);
+      const productTotal = (0 * 5) + optionsTotal; // price=0, qty=5 (sum of options)
+      expect(productTotal).toBe(145.50); // 14.25×2 + 39.00×3 = 28.50 + 117 = 145.50
+    });
+  });
+
+  describe('Creating new order - ADDON product (price>0, add-ons)', () => {
     it('should multiply per-unit addon.quantity by product.quantity before sending to API', () => {
       const product = { product_id: 1, quantity: 10, price: 5.0 };
       const addon = { option_name: 'Extra', option_value: 'Yes', quantity: 1, price: 2.0 };
-      // Admin frontend fix: multiply by product qty
-      const option_quantity = (addon.quantity || 1) * product.quantity;
+      const isVariant = product.price === 0;
+      const option_quantity = isVariant ? (addon.quantity || 1) : (addon.quantity || 1) * product.quantity;
       expect(option_quantity).toBe(10); // 1 per unit × 10 products = 10 total
     });
 
     it('should handle addon quantity > 1 per unit', () => {
       const product = { product_id: 1, quantity: 5, price: 10.0 };
       const addon = { option_name: 'Napkins', option_value: '2 pack', quantity: 2, price: 1.0 };
-      const option_quantity = (addon.quantity || 1) * product.quantity;
+      const isVariant = product.price === 0;
+      const option_quantity = isVariant ? (addon.quantity || 1) : (addon.quantity || 1) * product.quantity;
       expect(option_quantity).toBe(10); // 2 per unit × 5 products = 10 total
     });
 
     it('should default addon quantity to 1 when not specified', () => {
       const product = { product_id: 1, quantity: 8, price: 5.0 };
       const addon = { option_name: 'Gift Wrap', option_value: 'Yes', quantity: undefined as any, price: 3.0 };
-      const option_quantity = (addon.quantity || 1) * product.quantity;
+      const isVariant = product.price === 0;
+      const option_quantity = isVariant ? (addon.quantity || 1) : (addon.quantity || 1) * product.quantity;
       expect(option_quantity).toBe(8); // (undefined||1) × 8 = 8
     });
   });
 
   describe('Editing order - load and save roundtrip', () => {
-    it('should divide stored option_quantity by product quantity when loading for edit', () => {
-      // DB stores total: option_quantity = 10 (product qty=10, per-unit=1)
+    it('should NOT divide option_quantity for variant products when loading', () => {
+      // Variant: stored option_quantity = 2, product qty = 5 (sum of options)
+      const storedOptionQuantity = 2;
+      const productQuantity = 5;
+      const productPrice = 0;
+      const isVariant = productPrice === 0;
+      const perUnitQty = isVariant ? storedOptionQuantity : storedOptionQuantity / productQuantity;
+      expect(perUnitQty).toBe(2); // Direct value for variants
+    });
+
+    it('should divide option_quantity for addon products when loading', () => {
+      // Addon: stored option_quantity = 10, product qty = 10
       const storedOptionQuantity = 10;
       const productQuantity = 10;
-      const perUnitQty = storedOptionQuantity / productQuantity;
-      expect(perUnitQty).toBe(1); // Display as 1 per unit in the form
+      const productPrice = 5.0;
+      const isVariant = productPrice === 0;
+      const perUnitQty = isVariant ? storedOptionQuantity : storedOptionQuantity / productQuantity;
+      expect(perUnitQty).toBe(1); // 10/10 = 1 per unit
     });
 
-    it('should multiply back when saving after edit', () => {
-      // User sees per-unit=1 in form, product qty=10
-      const addonQuantity = 1;
-      const productQuantity = 10;
-      const option_quantity = addonQuantity * productQuantity;
-      expect(option_quantity).toBe(10); // Send 10 to API
-    });
-
-    it('should handle changed product quantity on edit', () => {
-      // Original: product qty=10, option_quantity=10 (per-unit=1)
-      // User changes product qty to 5, keeps addon per-unit=1
-      const addonQuantity = 1;
-      const newProductQuantity = 5;
-      const option_quantity = addonQuantity * newProductQuantity;
-      expect(option_quantity).toBe(5); // Correctly recalculated
+    it('should save correctly for variant products', () => {
+      // Variant: user has addon qty = 2 in form, product price = 0
+      const addonQuantity = 2;
+      const productPrice = 0;
+      const productQuantity = 1; // Hidden in UI for variants
+      const isVariant = productPrice === 0;
+      const option_quantity = isVariant ? addonQuantity : addonQuantity * productQuantity;
+      expect(option_quantity).toBe(2); // Direct value
     });
   });
 
   describe('Subtotal display calculation', () => {
-    it('should multiply per-unit addon total by product qty for subtotal', () => {
+    it('should calculate subtotal correctly for addon products', () => {
       const item = { quantity: 10, price: 5.0 };
       const addons = [
         { quantity: 1, price: 2.0 },
         { quantity: 1, price: 3.0 },
       ];
-      // Per-unit addon total
       const addOnsPerUnit = addons.reduce((sum, a) => sum + (a.quantity * a.price), 0);
-      // Multiply by product qty for display
       const addOnsTotal = addOnsPerUnit * item.quantity;
       const subtotal = (item.price * item.quantity) + addOnsTotal;
       expect(addOnsTotal).toBe(50.0); // (1×2 + 1×3) × 10 = 5 × 10 = 50
       expect(subtotal).toBe(100.0); // 50 + 50 = 100
+    });
+
+    it('should calculate subtotal correctly for variant products', () => {
+      const item = { quantity: 1, price: 0 }; // qty=1 hidden for variants
+      const addons = [
+        { quantity: 2, price: 14.25 },
+        { quantity: 3, price: 39.00 },
+      ];
+      const addOnsPerUnit = addons.reduce((sum, a) => sum + (a.quantity * a.price), 0);
+      const addOnsTotal = addOnsPerUnit * item.quantity; // × 1 = no change
+      const subtotal = (item.price * item.quantity) + addOnsTotal;
+      expect(subtotal).toBe(145.50); // 0 + (14.25×2 + 39.00×3) = 145.50
     });
   });
 });
