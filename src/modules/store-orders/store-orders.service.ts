@@ -1025,7 +1025,9 @@ export class StoreOrdersService {
         options: optionsResult.map((opt: any) => ({
           option_name: opt.option_name,
           option_value: opt.option_value,
-          option_quantity: opt.option_quantity,
+          option_quantity: parseInt(opt.option_quantity) || 1,
+          option_price: parseFloat(opt.option_price) || 0,
+          option_total: parseFloat(opt.option_total) || ((parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || 1)),
         })),
       });
     }
@@ -1171,7 +1173,9 @@ export class StoreOrdersService {
         options: optionsResult.map((opt: any) => ({
           option_name: opt.option_name,
           option_value: opt.option_value,
-          option_quantity: opt.option_quantity,
+          option_quantity: parseInt(opt.option_quantity) || 1,
+          option_price: parseFloat(opt.option_price) || 0,
+          option_total: parseFloat(opt.option_total) || ((parseFloat(opt.option_price) || 0) * (parseInt(opt.option_quantity) || 1)),
         })),
       });
     }

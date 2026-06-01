@@ -355,6 +355,11 @@ export class AdminOrdersService implements OnModuleInit {
         co.company_abn,
         d.department_name,
         l.location_name,
+        l.pickup_address as location_address,
+        l.contact as location_phone,
+        l.remittance_email as location_email,
+        l.abn as location_abn,
+        l.company_name as location_company_name,
         o.coupon_discount as stored_coupon_discount,
         cp.coupon_code,
         cp.type as coupon_type,
@@ -377,6 +382,7 @@ export class AdminOrdersService implements OnModuleInit {
                   'option_value', opo.option_value,
                   'option_quantity', opo.option_quantity,
                   'option_price', opo.option_price,
+                  'option_total', opo.option_total,
                   'option_value_id', po.option_value_id
                 ) ORDER BY opo.order_product_option_id)
                 FROM order_product_option opo
@@ -503,6 +509,19 @@ export class AdminOrdersService implements OnModuleInit {
       formattedDeliveryTime = `${hours}:${minutes}`;
     }
 
+    // Fetch company settings for display
+    let companySettings: Record<string, string> = {};
+    try {
+      const settingsResult = await this.dataSource.query(
+        `SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('company_name', 'company_email', 'company_phone', 'company_abn', 'company_address')`
+      );
+      settingsResult.forEach((row: any) => {
+        companySettings[row.setting_key] = row.setting_value;
+      });
+    } catch (e) {
+      // Settings table may not exist
+    }
+
     return {
       order: {
         ...orderWithoutProducts,
@@ -534,6 +553,14 @@ export class AdminOrdersService implements OnModuleInit {
         payment_status: paymentStatus,
         order_total: orderTotal,
         order_made_from: order.customer_from || null,
+        // Company/location settings for display
+        company_settings: {
+          company_name: order.location_company_name || companySettings.company_name || '',
+          company_abn: order.location_abn || companySettings.company_abn || '',
+          company_address: order.location_address || companySettings.company_address || '',
+          company_phone: order.location_phone || companySettings.company_phone || '',
+          company_email: order.location_email || companySettings.company_email || '',
+        },
       },
     };
   }

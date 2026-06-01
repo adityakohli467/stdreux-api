@@ -616,51 +616,103 @@ export class InvoiceService {
             tableY = 58;
           }
 
-          if (index % 2 === 0) {
-            doc.rect(40, tableY - 3, 520, rowHeight).fillColor(bgGray).fill().fillColor(darkGray);
-          }
+          const hasOptions = item.options && item.options.length > 0;
 
-          doc.moveTo(40, tableY - 3).lineTo(560, tableY - 3).strokeColor(borderGray).lineWidth(0.5).stroke();
+          if (hasOptions) {
+            // Product HAS options: show each option as its own row with option qty/price/total
+            item.options!.forEach((opt: any, optIdx: number) => {
+              if (tableY > maxTableY) {
+                doc.addPage();
+                doc.rect(40, 30, 520, 20).fillColor(primaryColor).fill().fillColor('#ffffff');
+                doc.fontSize(9).font('Helvetica-Bold');
+                doc.text('Description', 50, 35);
+                doc.text('Qty', 360, 35);
+                doc.text('Unit Price', 410, 35);
+                doc.text('Total', 500, 35, { align: 'right', width: 60 });
+                doc.fillColor(darkGray);
+                tableY = 58;
+              }
 
-          doc.fontSize(7).font('Helvetica');
-          let displayName = item.product_name;
-          if (item.is_taxable) {
-            displayName += ' (GST)';
-          }
-          doc.text(displayName, 50, tableY + 1, { width: 300 });
+              if ((index + optIdx) % 2 === 0) {
+                doc.rect(40, tableY - 3, 520, rowHeight).fillColor(bgGray).fill().fillColor(darkGray);
+              }
+              doc.moveTo(40, tableY - 3).lineTo(560, tableY - 3).strokeColor(borderGray).lineWidth(0.5).stroke();
 
-          let extraHeight = 0;
-
-          // Show product comment if available
-          if (item.comment) {
-            doc.fontSize(6).fillColor(lightGray);
-            doc.text(`Note: ${item.comment}`, 55, tableY + 8, { width: 295 });
-            doc.fillColor(darkGray);
-            doc.fontSize(7);
-            extraHeight += 7;
-          }
-
-          // Show options as description-only sub-text (no qty/price columns on option rows)
-          if (item.options && item.options.length > 0) {
-            item.options.forEach((opt: any) => {
-              doc.fontSize(7).font('Helvetica').fillColor('#1a202c');
-              let optionText = `${opt.option_name}: ${opt.option_value}`;
-              doc.text(optionText, 55, tableY + 9 + extraHeight, { width: 295 });
-              doc.fillColor(darkGray);
               doc.fontSize(7).font('Helvetica');
+
+              // Show product name only on first option row
+              let displayName = '';
+              if (optIdx === 0) {
+                displayName = item.product_name;
+                if (item.is_taxable) displayName += ' (GST)';
+              }
+              const optText = `${opt.option_name}: ${opt.option_value}`;
+              const fullText = displayName ? `${displayName}\n  ${optText}` : `  ${optText}`;
+              doc.text(displayName || '', 50, tableY + 1, { width: 300 });
+
+              let extraHeight = 0;
+              // Show comment only on first option
+              if (optIdx === 0 && item.comment) {
+                doc.fontSize(6).fillColor(lightGray);
+                doc.text(`Note: ${item.comment}`, 55, tableY + 8, { width: 295 });
+                doc.fillColor(darkGray);
+                doc.fontSize(7);
+                extraHeight += 7;
+              }
+
+              // Option description
+              doc.fontSize(7).font('Helvetica').fillColor('#1a202c');
+              doc.text(optText, 55, tableY + 9 + extraHeight, { width: 295 });
+              doc.fillColor(darkGray);
               extraHeight += 10;
+
+              // Option qty, price, total
+              const optQty = parseInt(opt.option_quantity) || 1;
+              const optPrice = parseFloat(opt.option_price) || 0;
+              const optTotal = optPrice * optQty;
+              doc.text(`x${optQty}`, 360, tableY + 1);
+              doc.text(`$${optPrice.toFixed(2)}`, 410, tableY + 1);
+              doc.font('Helvetica-Bold');
+              doc.text(`$${optTotal.toFixed(2)}`, 500, tableY + 1, { align: 'right', width: 60 });
+              doc.font('Helvetica');
+
+              tableY += rowHeight + extraHeight;
             });
+          } else {
+            // Product has NO options: show product qty/price/total
+            if (index % 2 === 0) {
+              doc.rect(40, tableY - 3, 520, rowHeight).fillColor(bgGray).fill().fillColor(darkGray);
+            }
+
+            doc.moveTo(40, tableY - 3).lineTo(560, tableY - 3).strokeColor(borderGray).lineWidth(0.5).stroke();
+
+            doc.fontSize(7).font('Helvetica');
+            let displayName = item.product_name;
+            if (item.is_taxable) {
+              displayName += ' (GST)';
+            }
+            doc.text(displayName, 50, tableY + 1, { width: 300 });
+
+            let extraHeight = 0;
+
+            // Show product comment if available
+            if (item.comment) {
+              doc.fontSize(6).fillColor(lightGray);
+              doc.text(`Note: ${item.comment}`, 55, tableY + 8, { width: 295 });
+              doc.fillColor(darkGray);
+              doc.fontSize(7);
+              extraHeight += 7;
+            }
+
+            // Product-level qty, unit price, total
+            doc.text(`x${item.quantity}`, 360, tableY + 1);
+            doc.text(`$${item.price.toFixed(2)}`, 410, tableY + 1);
+            doc.font('Helvetica-Bold');
+            doc.text(`$${item.total.toFixed(2)}`, 500, tableY + 1, { align: 'right', width: 60 });
+            doc.font('Helvetica');
+
+            tableY += rowHeight + extraHeight;
           }
-
-          // Product-level qty, unit price, total
-          doc.text(`x${item.quantity}`, 360, tableY + 1);
-          const unitPrice = item.price > 0 ? item.price : (item.total > 0 && item.quantity > 0 ? item.total / item.quantity : 0);
-          doc.text(`$${unitPrice.toFixed(2)}`, 410, tableY + 1);
-          doc.font('Helvetica-Bold');
-          doc.text(`$${item.total.toFixed(2)}`, 500, tableY + 1, { align: 'right', width: 60 });
-          doc.font('Helvetica');
-
-          tableY += rowHeight + extraHeight;
         });
 
         // Bottom border of table
