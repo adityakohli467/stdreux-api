@@ -491,7 +491,7 @@ export class StoreOrdersService {
               productOptionId = 0;
             }
 
-            const optionQuantity = option.quantity || 1;
+            const optionQuantity = option.quantity || item.quantity;
             const optionPrice = parseFloat((option.price || option.option_price || 0).toString());
             const optionTotal = optionPrice * optionQuantity;
 
