@@ -311,14 +311,36 @@ export class AdminXeroService implements OnModuleInit {
     const searchResponse = await this.xero.accountingApi.getContacts(tenantId, undefined, `Name=="${name}"`);
     const existingContacts = searchResponse.body.contacts;
 
+    const deliveryAddress = order.delivery_address || order.customer_address || '';
+
     if (existingContacts && existingContacts.length > 0) {
-      return existingContacts[0];
+      const existing = existingContacts[0];
+
+      // Update existing contact with delivery address if available
+      if (deliveryAddress && existing.contactID) {
+        try {
+          const updatedContact: Contact = {
+            contactID: existing.contactID,
+            name: existing.name,
+            addresses: [
+              {
+                addressType: Address.AddressTypeEnum.STREET,
+                addressLine1: deliveryAddress,
+              },
+            ],
+          };
+          const contacts: Contacts = { contacts: [updatedContact] };
+          await this.xero.accountingApi.updateContact(tenantId, existing.contactID, contacts);
+        } catch (e) {
+          this.logger.warn(`Failed to update Xero contact address: ${e?.message}`);
+        }
+      }
+      return existing;
     }
 
     // Create new contact
     const email = order.customer_email || order.email || order.account_email;
     const phone = order.customer_telephone || order.telephone;
-    const deliveryAddress = order.delivery_address || order.customer_address || '';
 
     const addresses: Address[] = [];
     if (deliveryAddress) {
