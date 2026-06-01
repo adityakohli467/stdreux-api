@@ -1,6 +1,6 @@
 import { Injectable, Logger, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { XeroClient, Invoice, LineItem, Contact, Invoices, Phone, Contacts, CurrencyCode } from 'xero-node';
+import { XeroClient, Invoice, LineItem, Contact, Invoices, Phone, Contacts, CurrencyCode, Address } from 'xero-node';
 import { DataSource } from 'typeorm';
 import { TokenSet } from 'openid-client';
 import { Cron } from '@nestjs/schedule';
@@ -318,11 +318,21 @@ export class AdminXeroService implements OnModuleInit {
     // Create new contact
     const email = order.customer_email || order.email || order.account_email;
     const phone = order.customer_telephone || order.telephone;
+    const deliveryAddress = order.delivery_address || order.customer_address || '';
+
+    const addresses: Address[] = [];
+    if (deliveryAddress) {
+      addresses.push({
+        addressType: Address.AddressTypeEnum.STREET,
+        addressLine1: deliveryAddress,
+      });
+    }
 
     const newContact: Contact = {
       name,
       emailAddress: email || undefined,
       phones: phone ? [{ phoneType: Phone.PhoneTypeEnum.DEFAULT, phoneNumber: phone }] : undefined,
+      addresses: addresses.length > 0 ? addresses : undefined,
     };
 
     const contacts: Contacts = { contacts: [newContact] };
