@@ -195,27 +195,44 @@ export class AdminXeroService implements OnModuleInit {
       const contactName = order.company_name || `${order.customer_firstname || order.firstname || ''} ${order.customer_lastname || order.lastname || ''}`.trim() || `Customer ${order.customer_id}`;
       const contact = await this.findOrCreateContact(tenantId, contactName, order);
 
-      // Build line items - order_product.total is always the final line total
-      const lineItems: LineItem[] = products.map((product: any) => {
+      // Build line items
+      // If product has options: each option becomes a line item with option_quantity, option_price, option_total
+      // If no options: use product quantity, price, total
+      const lineItems: LineItem[] = [];
+      for (const product of products) {
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
-        let quantity = product.quantity || 1;
-        const total = parseFloat(product.total) || 0;
-        const unitPrice = quantity > 0 ? total / quantity : total;
 
-        // Build description with options
-        const optionDesc = productOptions.map((o: any) => `${o.option_name}: ${o.option_value}`).join(', ');
-        const description = optionDesc
-          ? `${product.product_name || product.catalog_name || 'Product'} (${optionDesc})`
-          : (product.product_name || product.catalog_name || 'Product');
+        if (productOptions.length > 0) {
+          // Product has options - create a line item per option
+          for (const opt of productOptions) {
+            const optQty = parseFloat(opt.option_quantity) || 1;
+            const optPrice = parseFloat(opt.option_price) || 0;
+            const description = `${product.product_name || product.catalog_name || 'Product'} - ${opt.option_name}: ${opt.option_value}`;
 
-        return {
-          description,
-          quantity,
-          unitAmount: unitPrice,
-          accountCode: '200',
-          taxType: 'NONE',
-        };
-      });
+            lineItems.push({
+              description,
+              quantity: optQty,
+              unitAmount: optPrice,
+              accountCode: '200',
+              taxType: 'NONE',
+            });
+          }
+        } else {
+          // No options - use product-level data
+          const quantity = parseFloat(product.quantity) || 1;
+          const total = parseFloat(product.total) || 0;
+          const unitPrice = quantity > 0 ? total / quantity : total;
+          const description = product.product_name || product.catalog_name || 'Product';
+
+          lineItems.push({
+            description,
+            quantity,
+            unitAmount: unitPrice,
+            accountCode: '200',
+            taxType: 'NONE',
+          });
+        }
+      }
 
       // Add delivery fee as line item if present
       if (order.delivery_fee && parseFloat(order.delivery_fee) > 0) {
