@@ -761,6 +761,20 @@ export class StoreOrdersService {
           }
         }          // Send admin notification email
           const adminEmail = this.configService.get<string>('ADMIN_EMAIL') || this.configService.get<string>('FROM_EMAIL') || 'info@stdreux.com.au';
+
+          // Build product rows for the email
+          const productRowsHtml = orderItems.map((item: any) => {
+            const optionsText = item.options && item.options.length > 0
+              ? item.options.map((o: any) => `${o.option_name || ''}: ${o.option_value || ''}`).join(', ')
+              : '';
+            return `
+              <tr>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #eee;">${item.product_name || 'Product'}${optionsText ? `<br><small style="color: #666;">${optionsText}</small>` : ''}</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: center;">${item.quantity}</td>
+                <td style="padding: 8px 12px; border-bottom: 1px solid #eee; text-align: right;">$${(item.total || 0).toFixed(2)}</td>
+              </tr>`;
+          }).join('');
+
           const adminEmailHtml = `
 <!DOCTYPE html>
 <html>
@@ -809,6 +823,22 @@ export class StoreOrdersService {
         <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
         ${delivery_time ? `<div class="order-info"><strong>Delivery Time:</strong> ${delivery_time}</div>` : ''}
         ${order.delivery_address ? `<div class="order-info"><strong>Delivery Address:</strong> ${order.delivery_address}</div>` : ''}
+      </div>
+
+      <div class="order-details">
+        <h3>Products Ordered</h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background-color: #f0f0f0;">
+              <th style="padding: 8px 12px; text-align: left; border-bottom: 2px solid #ddd;">Product</th>
+              <th style="padding: 8px 12px; text-align: center; border-bottom: 2px solid #ddd;">Qty</th>
+              <th style="padding: 8px 12px; text-align: right; border-bottom: 2px solid #ddd;">Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${productRowsHtml}
+          </tbody>
+        </table>
       </div>
 
       <p style="color: #666; font-size: 12px; margin-top: 30px;">This is an automated notification from your e-commerce system.</p>
