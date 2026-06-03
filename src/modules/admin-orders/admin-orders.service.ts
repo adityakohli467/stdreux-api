@@ -335,6 +335,7 @@ export class AdminOrdersService implements OnModuleInit {
         payment_status: (row.payment_status === 'succeeded' || row.has_successful_payment || row.order_status === 2) ? 'Paid' : (row.payment_status === 'pay_later' ? 'Pay Later' : 'Not Paid'),
         packaging_status: row.packaging_status || 0,
         is_completed: row.is_completed || 0,
+        xero_synced: row.xero_synced || false,
       };
     });
 
