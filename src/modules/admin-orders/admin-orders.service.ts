@@ -110,7 +110,14 @@ export class AdminOrdersService implements OnModuleInit {
             AND ph.payment_status = 'succeeded'
           ) THEN true
           ELSE false
-        END as has_successful_payment
+        END as has_successful_payment,
+        CASE 
+          WHEN EXISTS (
+            SELECT 1 FROM xero_invoice_sync xis 
+            WHERE xis.order_id = o.order_id
+          ) THEN true
+          ELSE false
+        END as xero_synced
       FROM orders o
       ${customerJoinType} customer c ON o.customer_id = c.customer_id
       LEFT JOIN company co ON c.company_id = co.company_id
