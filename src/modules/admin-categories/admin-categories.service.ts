@@ -1,11 +1,23 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 @Injectable()
-export class AdminCategoriesService {
+export class AdminCategoriesService implements OnModuleInit {
   private readonly logger = new Logger(AdminCategoriesService.name);
 
   constructor(private dataSource: DataSource) {}
+
+  async onModuleInit() {
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE category
+        ADD COLUMN IF NOT EXISTS gst_free BOOLEAN DEFAULT FALSE
+      `);
+      this.logger.log('Ensured gst_free column exists in category table');
+    } catch (error) {
+      this.logger.error('Failed to add gst_free column to category table:', error);
+    }
+  }
 
   async findAll(query: any): Promise<any> {
     const { limit = 20, offset = 0, search } = query;
@@ -96,6 +108,11 @@ export class AdminCategoriesService {
       values.push(sort_order);
       placeholders.push(`$${idx++}`);
     }
+    if (createCategoryDto.gst_free !== null && createCategoryDto.gst_free !== undefined) {
+      columns.push('gst_free');
+      values.push(createCategoryDto.gst_free ? true : false);
+      placeholders.push(`$${idx++}`);
+    }
 
     const result = await this.dataSource.query(
       `INSERT INTO category (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`,
@@ -134,6 +151,10 @@ export class AdminCategoriesService {
     if (sort_order !== null && sort_order !== undefined) {
       sets.push(`sort_order = $${p++}`);
       params.push(sort_order);
+    }
+    if (updateCategoryDto.gst_free !== null && updateCategoryDto.gst_free !== undefined) {
+      sets.push(`gst_free = $${p++}`);
+      params.push(updateCategoryDto.gst_free ? true : false);
     }
     if (sets.length === 0) {
       throw new BadRequestException('No fields to update');

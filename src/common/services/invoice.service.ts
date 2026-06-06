@@ -176,7 +176,13 @@ export class InvoiceService {
           FROM product_category pc
           JOIN category c ON pc.category_id = c.category_id
           WHERE pc.product_id = p.product_id
-        ) as category_names
+        ) as category_names,
+        (
+          SELECT string_agg(CAST(COALESCE(c.gst_free, false) AS TEXT), ',')
+          FROM product_category pc
+          JOIN category c ON pc.category_id = c.category_id
+          WHERE pc.product_id = p.product_id
+        ) as gst_free_flags
       FROM order_product op
       LEFT JOIN product p ON op.product_id = p.product_id
       WHERE op.order_id = $1
@@ -209,9 +215,10 @@ export class InvoiceService {
       
       subtotal += itemTotal;
 
-      // Calculate GST for ANCILLARIES and PACKAGING categories
+      // Calculate GST: item is taxable unless its category is marked as gst_free
       const categories = (row.category_names || '').split(',').map((cat: string) => cat.trim().toUpperCase());
-      const isTaxable = categories.some(cat => ['ANCILLARIES', 'PACKAGING'].includes(cat));
+      const gstFreeFlags = (row.gst_free_flags || '').split(',').map((flag: string) => flag.trim());
+      const isTaxable = !gstFreeFlags.some((flag: string) => flag === 'true' || flag === '1' || flag === 't');
       if (isTaxable) {
         totalGst += itemTotal * 0.1;
       }
@@ -268,6 +275,10 @@ export class InvoiceService {
     }
 
     const afterDiscount = afterWholesaleDiscount - couponDiscount;
+    // Add delivery fee GST (delivery is always taxable)
+    if (deliveryFee > 0) {
+      totalGst += deliveryFee * 0.1;
+    }
     const gst = Math.round(totalGst * 100) / 100;
     const total = Math.round((afterDiscount + deliveryFee) * 100) / 100;
 

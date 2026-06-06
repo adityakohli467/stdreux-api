@@ -25,7 +25,7 @@ export class ProductsService {
       SELECT 
         p.*,
         (
-          SELECT json_agg(json_build_object('category_id', c.category_id, 'category_name', c.category_name))
+          SELECT json_agg(json_build_object('category_id', c.category_id, 'category_name', c.category_name, 'gst_free', COALESCE(c.gst_free, false)))
           FROM product_category pc
           JOIN category c ON pc.category_id = c.category_id
           WHERE pc.product_id = p.product_id
@@ -114,7 +114,7 @@ export class ProductsService {
       `SELECT 
         p.*,
         (
-          SELECT json_agg(json_build_object('category_id', c.category_id, 'category_name', c.category_name))
+          SELECT json_agg(json_build_object('category_id', c.category_id, 'category_name', c.category_name, 'gst_free', COALESCE(c.gst_free, false)))
           FROM product_category pc
           JOIN category c ON pc.category_id = c.category_id
           WHERE pc.product_id = p.product_id

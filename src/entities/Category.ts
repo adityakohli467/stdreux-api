@@ -34,6 +34,9 @@ export class Category {
   @Column({ type: "int", default: 0 })
   sort_order!: number
 
+  @Column({ type: "boolean", default: false })
+  gst_free!: boolean
+
   @CreateDateColumn({ name: "category_date_added" })
   category_date_added!: Date
 
