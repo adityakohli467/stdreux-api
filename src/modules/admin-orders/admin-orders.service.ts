@@ -1614,10 +1614,15 @@ export class AdminOrdersService implements OnModuleInit {
       AND (is_completed IS NULL OR is_completed::int = 0)
     `);
 
+    // Weekly revenue: Mon-Sun of current week, based on delivery date
+    // Only includes paid orders (frontend, backend, and mark-paid)
     const revenueResult = await this.dataSource.query(`
       SELECT COALESCE(SUM(order_total), 0) as total_revenue
       FROM orders
-      WHERE order_status::int IN (2, 7)
+      WHERE payment_status = 'succeeded'
+      AND delivery_date_time IS NOT NULL
+      AND DATE(delivery_date_time) >= date_trunc('week', CURRENT_DATE)::date
+      AND DATE(delivery_date_time) < (date_trunc('week', CURRENT_DATE) + interval '7 days')::date
     `);
 
     const todayResult = await this.dataSource.query(`
