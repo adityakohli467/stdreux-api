@@ -150,6 +150,7 @@ export class AdminXeroService implements OnModuleInit {
           c.email as customer_email,
           c.telephone as customer_telephone,
           c.customer_address,
+          c.customer_type,
           co.company_name
         FROM orders o
         LEFT JOIN customer c ON o.customer_id = c.customer_id
@@ -198,8 +199,23 @@ export class AdminXeroService implements OnModuleInit {
       // Build line items
       // If product has options: each option becomes a line item with option_quantity, option_price, option_total
       // If no options: use product quantity, price, total
+      // GST rules: items in gst_free categories get taxType 'NONE', others get 'OUTPUT' (10% GST)
+      // Delivery fee is always taxable (OUTPUT)
+      // Retail customers: GST inclusive (prices include GST)
+      // Wholesale customers: GST exclusive (GST added on top)
+      const customerType = order.customer_type || '';
+      const isWholesale = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
+
       const lineItems: LineItem[] = [];
       for (const product of products) {
+        // Check if this product's category is gst_free
+        const catResult = await this.dataSource.query(
+          `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+           FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+           WHERE pc.product_id = $1`, [product.product_id]);
+        const isGstFree = catResult[0]?.is_gst_free === true;
+        const taxType = isGstFree ? 'NONE' : 'OUTPUT';
+
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
 
         if (productOptions.length > 0) {
@@ -214,7 +230,7 @@ export class AdminXeroService implements OnModuleInit {
               quantity: optQty,
               unitAmount: optPrice,
               accountCode: '200',
-              taxType: 'NONE',
+              taxType,
             });
           }
         } else {
@@ -229,19 +245,19 @@ export class AdminXeroService implements OnModuleInit {
             quantity,
             unitAmount: unitPrice,
             accountCode: '200',
-            taxType: 'NONE',
+            taxType,
           });
         }
       }
 
-      // Add delivery fee as line item if present
+      // Add delivery fee as line item if present (always taxable)
       if (order.delivery_fee && parseFloat(order.delivery_fee) > 0) {
         lineItems.push({
           description: 'Delivery Fee',
           quantity: 1,
           unitAmount: parseFloat(order.delivery_fee),
           accountCode: '200',
-          taxType: 'NONE',
+          taxType: 'OUTPUT',
         });
       }
 
@@ -261,10 +277,15 @@ export class AdminXeroService implements OnModuleInit {
       const invoiceStatus = isPaid ? Invoice.StatusEnum.AUTHORISED : Invoice.StatusEnum.SUBMITTED;
 
       // Create the invoice in Xero
+      // Retail: prices are inclusive of GST (Inclusive)
+      // Wholesale: prices are exclusive of GST (Exclusive)
+      const lineAmountTypes = isWholesale ? 'Exclusive' : 'Inclusive';
+
       const invoice: Invoice = {
         type: Invoice.TypeEnum.ACCREC, // Sales invoice
         contact: { contactID: contact.contactID },
         lineItems,
+        lineAmountTypes: lineAmountTypes as any,
         date: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         dueDate: order.payment_date ? new Date(order.payment_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
         reference: `Order #${orderId}`,
