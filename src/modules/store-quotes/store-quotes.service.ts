@@ -186,10 +186,26 @@ export class StoreQuotesService {
     const afterDiscount = afterWholesaleDiscount - finalCouponDiscount;
     // For wholesale customers, GST is exclusive (added to total)
     // For retail customers, GST is inclusive (not added to total)
+    // GST only applies to items NOT in a gst_free category
     const quoteCustomerType = quote.customer_type || '';
     const isWholesaleQuote = quoteCustomerType.includes('Wholesale') || quoteCustomerType.includes('Wholesaler');
     const quoteDeliveryFee = parseFloat(quote.delivery_fee || 0);
-    const gst = isWholesaleQuote ? Math.round((afterDiscount + quoteDeliveryFee) * 0.1 * 100) / 100 : 0;
+    let gst = 0;
+    if (isWholesaleQuote && quote.products) {
+      let taxableAmount = 0;
+      for (const product of quote.products) {
+        const catResult = await this.dataSource.query(
+          `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+           FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+           WHERE pc.product_id = $1`, [product.product_id]);
+        if (!catResult[0]?.is_gst_free) {
+          const productPrice = parseFloat(product.price || 0);
+          const productQuantity = parseInt(product.quantity || 1);
+          taxableAmount += productPrice * productQuantity;
+        }
+      }
+      gst = Math.round((taxableAmount + quoteDeliveryFee) * 0.1 * 100) / 100;
+    }
     const calculatedTotal = afterDiscount + gst + quoteDeliveryFee;
 
     // Order status mapping

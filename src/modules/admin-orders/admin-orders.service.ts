@@ -478,10 +478,24 @@ export class AdminOrdersService implements OnModuleInit {
     const afterDiscount = subtotalAfterWholesale - couponDiscount;
     // For wholesale customers, GST is exclusive (added to total)
     // For retail customers, GST is inclusive (not added to total)
+    // GST only applies to items NOT in a gst_free category
     const customerType = order.customer_type || '';
     const isWholesaleOrder = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
     const deliveryFee = parseFloat(order.delivery_fee || 0);
-    const gst = isWholesaleOrder ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
+    let gst = 0;
+    if (isWholesaleOrder && Array.isArray(orderProducts)) {
+      let taxableAmount = 0;
+      for (const product of orderProducts) {
+        const catResult = await this.dataSource.query(
+          `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+           FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+           WHERE pc.product_id = $1`, [product.product_id]);
+        if (!catResult[0]?.is_gst_free) {
+          taxableAmount += parseFloat(product.total || 0);
+        }
+      }
+      gst = Math.round((taxableAmount + deliveryFee) * 0.1 * 100) / 100;
+    }
     const orderTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
     // Check payment status from payment_history
@@ -679,8 +693,30 @@ export class AdminOrdersService implements OnModuleInit {
       const afterDiscount = subtotalAfterWholesale - couponDiscount;
       // For wholesale customers, GST is exclusive (added to total)
       // For retail customers, GST is inclusive (not added to total)
-      const gst = isWholesale ? Math.round((afterDiscount + parseFloat(delivery_fee || 0)) * 0.1 * 100) / 100 : 0;
+      // GST only applies to items NOT in a gst_free category
       const deliveryFeeAmount = parseFloat(delivery_fee || 0);
+      let gst = 0;
+      if (isWholesale) {
+        let taxableAmount = 0;
+        for (const product of products) {
+          const productPrice = parseFloat(product.price) || 0;
+          const qty = parseInt(product.quantity) || 1;
+          let optionsTotal = 0;
+          const opts = product.add_ons || product.options || [];
+          if (Array.isArray(opts)) {
+            for (const addon of opts) {
+              optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
+            }
+          }
+          const lineTotal = (productPrice * qty) + optionsTotal;
+          const catResult = await queryRunner.query(
+            `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+             FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+             WHERE pc.product_id = $1`, [product.product_id]);
+          if (!catResult[0]?.is_gst_free) taxableAmount += lineTotal;
+        }
+        gst = Math.round((taxableAmount + deliveryFeeAmount) * 0.1 * 100) / 100;
+      }
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 
       // Build delivery_date_time: prioritize delivery_date/delivery_time over delivery_date_time
@@ -928,8 +964,30 @@ export class AdminOrdersService implements OnModuleInit {
       const afterDiscount = subtotalAfterWholesale - couponDiscount;
       // For wholesale customers, GST is exclusive (added to total)
       // For retail customers, GST is inclusive (not added to total)
-      const gst = isWholesale ? Math.round((afterDiscount + parseFloat(delivery_fee || 0)) * 0.1 * 100) / 100 : 0;
+      // GST only applies to items NOT in a gst_free category
       const deliveryFeeAmount = parseFloat(delivery_fee || 0);
+      let gst = 0;
+      if (isWholesale) {
+        let taxableAmount = 0;
+        for (const product of products) {
+          const productPrice = parseFloat(product.price) || 0;
+          const qty = parseInt(product.quantity) || 1;
+          let optionsTotal = 0;
+          const opts = product.add_ons || product.options || [];
+          if (Array.isArray(opts)) {
+            for (const addon of opts) {
+              optionsTotal += (parseFloat(addon.option_price) || 0) * (parseInt(addon.option_quantity) || qty);
+            }
+          }
+          const lineTotal = (productPrice * qty) + optionsTotal;
+          const catResult = await queryRunner.query(
+            `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+             FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+             WHERE pc.product_id = $1`, [product.product_id]);
+          if (!catResult[0]?.is_gst_free) taxableAmount += lineTotal;
+        }
+        gst = Math.round((taxableAmount + deliveryFeeAmount) * 0.1 * 100) / 100;
+      }
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 
       // Build delivery_date_time: prioritize delivery_date_time if provided, otherwise build from date/time

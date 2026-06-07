@@ -326,8 +326,22 @@ export class StoreOrdersService {
       // Calculate GST and total
       // For wholesale customers, GST is exclusive (added to total)
       // For retail customers, GST is inclusive (not added to total)
+      // GST only applies to items NOT in a gst_free category
       const deliveryFee = parseFloat((delivery_fee || 0).toString());
-      const gst = isWholesale ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
+      let gst = 0;
+      if (isWholesale) {
+        let taxableAmount = 0;
+        for (const item of orderItems) {
+          const catResult = await queryRunner.query(
+            `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+             FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+             WHERE pc.product_id = $1`, [item.product_id]);
+          if (!catResult[0]?.is_gst_free) {
+            taxableAmount += item.total;
+          }
+        }
+        gst = Math.round((taxableAmount + deliveryFee) * 0.1 * 100) / 100;
+      }
       const total = afterDiscount + gst + deliveryFee;
 
       // Parse delivery date and time (support direct delivery_date_time or separate date/time)
@@ -1246,9 +1260,23 @@ export class StoreOrdersService {
     const afterDiscount = afterWholesaleDiscount - couponDiscount;
     // For wholesale customers, GST is exclusive (added to total)
     // For retail customers, GST is inclusive (not added to total)
+    // GST only applies to items NOT in a gst_free category
     const customerTypeStr = customer.customer_type || '';
     const isWholesaleOrder = customerTypeStr.includes('Wholesale') || customerTypeStr.includes('Wholesaler');
-    const gst = isWholesaleOrder ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
+    let gst = 0;
+    if (isWholesaleOrder) {
+      let taxableAmount = 0;
+      for (const item of items) {
+        const catResult = await this.dataSource.query(
+          `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+           FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+           WHERE pc.product_id = $1`, [item.product_id]);
+        if (!catResult[0]?.is_gst_free) {
+          taxableAmount += item.total;
+        }
+      }
+      gst = Math.round((taxableAmount + deliveryFee) * 0.1 * 100) / 100;
+    }
     const calculatedTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
     return {
