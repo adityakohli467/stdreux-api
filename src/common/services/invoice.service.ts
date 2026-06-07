@@ -280,7 +280,14 @@ export class InvoiceService {
       totalGst += deliveryFee * 0.1;
     }
     const gst = Math.round(totalGst * 100) / 100;
-    const total = Math.round((afterDiscount + deliveryFee) * 100) / 100;
+
+    // Determine if wholesale customer - GST is exclusive (added to total)
+    // For retail customers, GST is inclusive (already in the price, not added to total)
+    const customerType = order.customer_type || '';
+    const isWholesale = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
+    const total = isWholesale
+      ? Math.round((afterDiscount + deliveryFee + gst) * 100) / 100
+      : Math.round((afterDiscount + deliveryFee) * 100) / 100;
 
     // Calculate amount paid and balance
     const amountPaid = parseFloat(order.amount_paid || 0);
@@ -764,9 +771,12 @@ export class InvoiceService {
           currentY += 9;
         }
 
-        // Display GST as informational if it's greater than 0
+        // Display GST - label depends on customer type
         if (data.gst > 0) {
-          doc.text('GST (Included):', totalsX, currentY, { width: 120, align: 'right' });
+          const gstLabel = (data.customer_type?.includes('Wholesale') || data.customer_type?.includes('Wholesaler'))
+            ? 'GST (10%):'
+            : 'GST (Included):';
+          doc.text(gstLabel, totalsX, currentY, { width: 120, align: 'right' });
           doc.text(`$${data.gst.toFixed(2)}`, totalsX + 130, currentY, { width: 90, align: 'right' });
           currentY += 9;
         }

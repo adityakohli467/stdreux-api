@@ -184,8 +184,13 @@ export class StoreQuotesService {
     const finalCouponDiscount =
       couponDiscount > 0 ? Math.min(couponDiscount, afterWholesaleDiscount) : 0;
     const afterDiscount = afterWholesaleDiscount - finalCouponDiscount;
-    const gst = 0; // Removed GST
-    const calculatedTotal = afterDiscount + gst + parseFloat(quote.delivery_fee || 0);
+    // For wholesale customers, GST is exclusive (added to total)
+    // For retail customers, GST is inclusive (not added to total)
+    const quoteCustomerType = quote.customer_type || '';
+    const isWholesaleQuote = quoteCustomerType.includes('Wholesale') || quoteCustomerType.includes('Wholesaler');
+    const quoteDeliveryFee = parseFloat(quote.delivery_fee || 0);
+    const gst = isWholesaleQuote ? Math.round((afterDiscount + quoteDeliveryFee) * 0.1 * 100) / 100 : 0;
+    const calculatedTotal = afterDiscount + gst + quoteDeliveryFee;
 
     // Order status mapping
     const statusMap: { [key: number]: string } = {

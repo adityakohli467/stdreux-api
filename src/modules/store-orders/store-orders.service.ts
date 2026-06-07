@@ -324,8 +324,10 @@ export class StoreOrdersService {
       const afterDiscount = afterWholesaleDiscount - couponDiscount;
 
       // Calculate GST and total
-      const gst = 0; // Removed GST
+      // For wholesale customers, GST is exclusive (added to total)
+      // For retail customers, GST is inclusive (not added to total)
       const deliveryFee = parseFloat((delivery_fee || 0).toString());
+      const gst = isWholesale ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
       const total = afterDiscount + gst + deliveryFee;
 
       // Parse delivery date and time (support direct delivery_date_time or separate date/time)
@@ -1242,7 +1244,11 @@ export class StoreOrdersService {
     }
 
     const afterDiscount = afterWholesaleDiscount - couponDiscount;
-    const gst = 0; // Removed GST
+    // For wholesale customers, GST is exclusive (added to total)
+    // For retail customers, GST is inclusive (not added to total)
+    const customerTypeStr = customer.customer_type || '';
+    const isWholesaleOrder = customerTypeStr.includes('Wholesale') || customerTypeStr.includes('Wholesaler');
+    const gst = isWholesaleOrder ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
     const calculatedTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
     return {

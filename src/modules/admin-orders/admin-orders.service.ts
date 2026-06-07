@@ -476,8 +476,12 @@ export class AdminOrdersService implements OnModuleInit {
     }
 
     const afterDiscount = subtotalAfterWholesale - couponDiscount;
-    const gst = 0; // Removed GST
+    // For wholesale customers, GST is exclusive (added to total)
+    // For retail customers, GST is inclusive (not added to total)
+    const customerType = order.customer_type || '';
+    const isWholesaleOrder = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
     const deliveryFee = parseFloat(order.delivery_fee || 0);
+    const gst = isWholesaleOrder ? Math.round((afterDiscount + deliveryFee) * 0.1 * 100) / 100 : 0;
     const orderTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
     // Check payment status from payment_history
@@ -673,7 +677,9 @@ export class AdminOrdersService implements OnModuleInit {
       }
 
       const afterDiscount = subtotalAfterWholesale - couponDiscount;
-      const gst = 0; // Removed GST
+      // For wholesale customers, GST is exclusive (added to total)
+      // For retail customers, GST is inclusive (not added to total)
+      const gst = isWholesale ? Math.round((afterDiscount + parseFloat(delivery_fee || 0)) * 0.1 * 100) / 100 : 0;
       const deliveryFeeAmount = parseFloat(delivery_fee || 0);
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 
@@ -920,7 +926,9 @@ export class AdminOrdersService implements OnModuleInit {
 
       const totalDiscount = wholesaleDiscount + couponDiscount;
       const afterDiscount = subtotalAfterWholesale - couponDiscount;
-      const gst = 0; // Removed GST
+      // For wholesale customers, GST is exclusive (added to total)
+      // For retail customers, GST is inclusive (not added to total)
+      const gst = isWholesale ? Math.round((afterDiscount + parseFloat(delivery_fee || 0)) * 0.1 * 100) / 100 : 0;
       const deliveryFeeAmount = parseFloat(delivery_fee || 0);
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 
