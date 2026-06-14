@@ -208,7 +208,7 @@ export class InvoiceService {
 
     // Calculate subtotal and GST for specific categories
     let subtotal = 0;
-    let totalGst = 0;
+    let taxableItemsTotal = 0;
     const itemsWithOptions = itemsResult.map((row: any) => {
       const itemTotal = parseFloat(row.total) || 0;
       const productOptions = optionsResult.filter((opt: any) => opt.order_product_id === row.order_product_id);
@@ -220,7 +220,7 @@ export class InvoiceService {
       const gstFreeFlags = (row.gst_free_flags || '').split(',').map((flag: string) => flag.trim());
       const isTaxable = !gstFreeFlags.some((flag: string) => flag === 'true' || flag === '1' || flag === 't');
       if (isTaxable) {
-        totalGst += itemTotal * 0.1;
+        taxableItemsTotal += itemTotal;
       }
 
       return {
@@ -275,16 +275,18 @@ export class InvoiceService {
     }
 
     const afterDiscount = afterWholesaleDiscount - couponDiscount;
-    // Add delivery fee GST (delivery is always taxable)
-    if (deliveryFee > 0) {
-      totalGst += deliveryFee * 0.1;
-    }
-    const gst = Math.round(totalGst * 100) / 100;
-
     // Determine if wholesale customer - GST is exclusive (added to total)
-    // For retail customers, GST is inclusive (already in the price, not added to total)
+    // For retail customers, GST is inclusive (already in the price, extract as amount/11)
     const customerType = order.customer_type || '';
     const isWholesale = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
+    // Delivery fee is always taxable
+    const totalTaxableWithDelivery = taxableItemsTotal + deliveryFee;
+    // Retail: GST = amount/11 (extracting from inclusive price)
+    // Wholesale: GST = amount * 0.1 (adding on top)
+    const gst = isWholesale
+      ? Math.round(totalTaxableWithDelivery * 0.1 * 100) / 100
+      : Math.round((totalTaxableWithDelivery / 11) * 100) / 100;
+
     const total = isWholesale
       ? Math.round((afterDiscount + deliveryFee + gst) * 100) / 100
       : Math.round((afterDiscount + deliveryFee) * 100) / 100;
