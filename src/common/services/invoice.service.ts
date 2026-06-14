@@ -276,16 +276,13 @@ export class InvoiceService {
 
     const afterDiscount = afterWholesaleDiscount - couponDiscount;
     // Determine if wholesale customer - GST is exclusive (added to total)
-    // For retail customers, GST is inclusive (already in the price, extract as amount/11)
+    // For retail customers, GST is inclusive (already in the price, not added to total)
     const customerType = order.customer_type || '';
     const isWholesale = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
     // Delivery fee is always taxable
     const totalTaxableWithDelivery = taxableItemsTotal + deliveryFee;
-    // Retail: GST = amount/11 (extracting from inclusive price)
-    // Wholesale: GST = amount * 0.1 (adding on top)
-    const gst = isWholesale
-      ? Math.round(totalTaxableWithDelivery * 0.1 * 100) / 100
-      : Math.round((totalTaxableWithDelivery / 11) * 100) / 100;
+    // GST is always totalTaxable / 11
+    const gst = Math.round((totalTaxableWithDelivery / 11) * 100) / 100;
 
     const total = isWholesale
       ? Math.round((afterDiscount + deliveryFee + gst) * 100) / 100
