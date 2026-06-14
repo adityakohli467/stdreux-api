@@ -309,9 +309,24 @@ export class AdminXeroService implements OnModuleInit {
             ? new Date(order.payment_date).toISOString().split('T')[0]
             : new Date().toISOString().split('T')[0];
 
+          // Find the first bank account in Xero to use for the payment
+          let bankAccountCode = '090';
+          try {
+            const accountsResponse = await this.xero.accountingApi.getAccounts(
+              tenantId, undefined, 'Type=="BANK"'
+            );
+            const bankAccounts = accountsResponse.body.accounts;
+            if (bankAccounts && bankAccounts.length > 0) {
+              bankAccountCode = bankAccounts[0].code || '090';
+              this.logger.log(`Using Xero bank account: ${bankAccounts[0].name} (${bankAccountCode})`);
+            }
+          } catch (accountError) {
+            this.logger.warn(`Could not fetch bank accounts from Xero, using default code '090'`);
+          }
+
           const payment = {
             invoice: { invoiceID: createdInvoice.invoiceID },
-            account: { code: '090' }, // Default bank account code - adjust if needed
+            account: { code: bankAccountCode },
             amount: invoiceTotal,
             date: paymentDate,
             reference: `Payment for Order #${orderId}`,
@@ -320,7 +335,8 @@ export class AdminXeroService implements OnModuleInit {
           await this.xero.accountingApi.createPayment(tenantId, payment as any);
           this.logger.log(`Xero payment recorded for invoice ${createdInvoice.invoiceNumber}`);
         } catch (paymentError: any) {
-          this.logger.warn(`Failed to record payment in Xero for order #${orderId}: ${paymentError?.message || 'Unknown error'}. Invoice was created but not marked as paid.`);
+          const paymentErrMsg = paymentError?.response?.body?.Message || paymentError?.body?.Message || paymentError?.message || 'Unknown error';
+          this.logger.warn(`Failed to record payment in Xero for order #${orderId}: ${paymentErrMsg}. Invoice was created but not marked as paid.`);
         }
       }
 
