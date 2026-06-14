@@ -204,7 +204,7 @@ export class StoreQuotesService {
           taxableAmount += productPrice * productQuantity;
         }
       }
-      gst = Math.round((taxableAmount + quoteDeliveryFee) * 0.1 * 100) / 100;
+      gst = Math.round((taxableAmount + quoteDeliveryFee) / 11 * 100) / 100;
     }
     const calculatedTotal = afterDiscount + gst + quoteDeliveryFee;
 

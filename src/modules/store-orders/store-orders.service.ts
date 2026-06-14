@@ -340,7 +340,7 @@ export class StoreOrdersService {
             taxableAmount += item.total;
           }
         }
-        gst = Math.round((taxableAmount + deliveryFee) * 0.1 * 100) / 100;
+        gst = Math.round((taxableAmount + deliveryFee) / 11 * 100) / 100;
       }
       const total = afterDiscount + gst + deliveryFee;
 
@@ -1275,7 +1275,7 @@ export class StoreOrdersService {
           taxableAmount += item.total;
         }
       }
-      gst = Math.round((taxableAmount + deliveryFee) * 0.1 * 100) / 100;
+      gst = Math.round((taxableAmount + deliveryFee) / 11 * 100) / 100;
     }
     const calculatedTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
