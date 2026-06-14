@@ -762,11 +762,25 @@ export class StoreOrdersService {
 </html>
           `;
 
+            // Generate PDF invoice for attachment
+            let pdfAttachments: Array<{ filename: string; content: Buffer; contentType: string }> | undefined;
+            try {
+              const pdfBuffer = await this.invoiceService.generatePDFBuffer(orderId);
+              pdfAttachments = [{
+                filename: `invoice-${orderId}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf',
+              }];
+            } catch (pdfErr) {
+              this.logger.error(`Failed to generate PDF for customer email order #${orderId}`, pdfErr);
+            }
+
             const customerEmailResult = await this.notificationService.sendNotification({
               templateKey: 'order_confirmation',
               recipientEmail: customerEmail,
               customSubject: customerSubject,
               customBody: emailHtml,
+              attachments: pdfAttachments,
             });
 
             if (!customerEmailResult.success) {
