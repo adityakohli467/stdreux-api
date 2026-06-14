@@ -301,6 +301,29 @@ export class AdminXeroService implements OnModuleInit {
         throw new BadRequestException('Failed to create invoice in Xero');
       }
 
+      // If order is paid, create a payment in Xero to mark invoice as paid
+      if (isPaid && createdInvoice.invoiceID) {
+        try {
+          const invoiceTotal = createdInvoice.total || parseFloat(order.order_total || 0);
+          const paymentDate = order.payment_date
+            ? new Date(order.payment_date).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0];
+
+          const payment = {
+            invoice: { invoiceID: createdInvoice.invoiceID },
+            account: { code: '090' }, // Default bank account code - adjust if needed
+            amount: invoiceTotal,
+            date: paymentDate,
+            reference: `Payment for Order #${orderId}`,
+          };
+
+          await this.xero.accountingApi.createPayment(tenantId, payment as any);
+          this.logger.log(`Xero payment recorded for invoice ${createdInvoice.invoiceNumber}`);
+        } catch (paymentError: any) {
+          this.logger.warn(`Failed to record payment in Xero for order #${orderId}: ${paymentError?.message || 'Unknown error'}. Invoice was created but not marked as paid.`);
+        }
+      }
+
       // Record the sync
       await this.dataSource.query(
         `INSERT INTO xero_invoice_sync (order_id, xero_invoice_id, xero_invoice_number, xero_contact_id, synced_at)
