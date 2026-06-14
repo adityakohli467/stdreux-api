@@ -586,7 +586,8 @@ export class StoreProductsService {
       SELECT 
         c.category_id,
         c.category_name,
-        c.parent_category_id
+        c.parent_category_id,
+        COALESCE(c.gst_free, false) as gst_free
       FROM category c
       JOIN product_category pc ON c.category_id = pc.category_id
       WHERE pc.product_id = $1
