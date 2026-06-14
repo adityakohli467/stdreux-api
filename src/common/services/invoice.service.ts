@@ -773,8 +773,8 @@ export class InvoiceService {
         // Display GST - label depends on customer type
         if (data.gst > 0) {
           const gstLabel = (data.customer_type?.includes('Wholesale') || data.customer_type?.includes('Wholesaler'))
-            ? 'GST (10%):'
-            : 'GST (Included):';
+            ? 'GST :'
+            : 'GST :';
           doc.text(gstLabel, totalsX, currentY, { width: 120, align: 'right' });
           doc.text(`$${data.gst.toFixed(2)}`, totalsX + 130, currentY, { width: 90, align: 'right' });
           currentY += 9;
