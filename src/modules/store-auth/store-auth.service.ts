@@ -376,6 +376,8 @@ export class StoreAuthService implements OnModuleInit {
       const loginUrl = `${frontendUrl}/auth/login`;
       const contactNumber = this.configService.get<string>('COMPANY_PHONE') || '';
       const contactEmail = this.configService.get<string>('COMPANY_EMAIL') || '';
+      const adminEmails = this.configService.get<string>('ADMIN_NOTIFICATION_EMAILS') || contactEmail || '';
+      const adminEmailList = adminEmails.split(',').map(e => e.trim()).filter(Boolean);
       const companyNameVar = this.configService.get<string>('COMPANY_NAME') || 'St Dreux Coffee';
 
       // Handle both snake_case (from API) and camelCase (potential frontend format)
@@ -509,10 +511,10 @@ export class StoreAuthService implements OnModuleInit {
         }
 
         // Notify Admin about new Wholesaler registration
-        if (contactEmail) {
+        if (adminEmailList.length > 0) {
           await this.notificationService.sendNotification({
             templateKey: 'admin_new_wholesale_notification',
-            recipientEmail: contactEmail,
+            recipientEmail: adminEmailList,
             recipientName: 'Admin',
             variables: {
               customer_name: customerName,
@@ -591,10 +593,10 @@ export class StoreAuthService implements OnModuleInit {
         });
 
         // Notify Admin about new Regular Customer registration
-        if (contactEmail) {
+        if (adminEmailList.length > 0) {
           await this.notificationService.sendNotification({
             templateKey: 'admin_new_customer_notification',
-            recipientEmail: contactEmail,
+            recipientEmail: adminEmailList,
             recipientName: 'Admin',
             variables: {
               customer_name: customerName,
