@@ -327,32 +327,39 @@ export class AdminXeroService implements OnModuleInit {
             const bankAccount = bankAccounts[0];
             this.logger.log(`[Xero Payment] Using bank: ${bankAccount.name} (ID: ${bankAccount.accountID}, Code: ${bankAccount.code})`);
 
-            const paymentData = {
-              payments: [{
-                invoice: { invoiceID: createdInvoice.invoiceID },
-                account: { accountID: bankAccount.accountID },
-                amount: invoiceTotal,
-                date: paymentDate,
-              }],
+            // Use createPayment (singular) with Payment object directly
+            const payment: any = {
+              invoice: { invoiceID: createdInvoice.invoiceID },
+              account: { accountID: bankAccount.accountID },
+              amount: invoiceTotal,
+              date: paymentDate,
             };
 
-            const paymentResponse = await this.xero.accountingApi.createPayments(tenantId, paymentData as any);
-            const createdPayment = paymentResponse.body?.payments?.[0];
+            this.logger.log(`[Xero Payment] Payload: ${JSON.stringify(payment)}`);
+
+            const paymentResponse = await this.xero.accountingApi.createPayment(tenantId, payment);
+            const createdPayment = (paymentResponse.body as any)?.payments?.[0] || paymentResponse.body;
+            this.logger.log(`[Xero Payment] Full response: ${JSON.stringify(paymentResponse.body)}`);
             if (createdPayment?.paymentID) {
               this.logger.log(`[Xero Payment] SUCCESS - PaymentID: ${createdPayment.paymentID} for invoice ${createdInvoice.invoiceNumber}`);
             } else {
-              this.logger.warn(`[Xero Payment] Payment response did not return a paymentID`);
-              this.logger.warn(`[Xero Payment] Response: ${JSON.stringify(paymentResponse.body)}`);
+              this.logger.warn(`[Xero Payment] Payment created but no paymentID in response`);
             }
           }
         } catch (paymentError: any) {
           this.logger.error(`[Xero Payment] FAILED for order #${orderId}`);
-          this.logger.error(`[Xero Payment] Error: ${paymentError?.message}`);
+          this.logger.error(`[Xero Payment] Error message: ${paymentError?.message || 'none'}`);
+          this.logger.error(`[Xero Payment] Error string: ${String(paymentError)}`);
+          try {
+            this.logger.error(`[Xero Payment] Full error: ${JSON.stringify(paymentError, Object.getOwnPropertyNames(paymentError))}`);
+          } catch (e) {
+            this.logger.error(`[Xero Payment] Could not stringify error`);
+          }
           if (paymentError?.response?.body) {
-            this.logger.error(`[Xero Payment] Xero response: ${JSON.stringify(paymentError.response.body)}`);
+            this.logger.error(`[Xero Payment] Xero response body: ${JSON.stringify(paymentError.response.body)}`);
           }
           if (paymentError?.body) {
-            this.logger.error(`[Xero Payment] Body: ${JSON.stringify(paymentError.body)}`);
+            this.logger.error(`[Xero Payment] Error body: ${JSON.stringify(paymentError.body)}`);
           }
         }
       }
