@@ -274,6 +274,8 @@ export class AdminXeroService implements OnModuleInit {
 
       // Determine invoice status based on payment
       const isPaid = order.payment_status === 'succeeded' || order.payment_status === 'paid' || String(order.payment_status) === '1' || order.order_status === 2;
+      // Paid: AUTHORISED (required before payment can be applied)
+      // Unpaid: SUBMITTED (goes to "Awaiting Approval" in Xero)
       const invoiceStatus = isPaid ? Invoice.StatusEnum.AUTHORISED : Invoice.StatusEnum.SUBMITTED;
 
       // Create the invoice in Xero
@@ -310,33 +312,43 @@ export class AdminXeroService implements OnModuleInit {
             : new Date().toISOString().split('T')[0];
 
           // Find the first bank account in Xero to use for the payment
-          let bankAccountCode = '090';
+          let bankAccountID: string | undefined;
           try {
             const accountsResponse = await this.xero.accountingApi.getAccounts(
               tenantId, undefined, 'Type=="BANK"'
             );
             const bankAccounts = accountsResponse.body.accounts;
             if (bankAccounts && bankAccounts.length > 0) {
-              bankAccountCode = bankAccounts[0].code || '090';
-              this.logger.log(`Using Xero bank account: ${bankAccounts[0].name} (${bankAccountCode})`);
+              bankAccountID = bankAccounts[0].accountID;
+              this.logger.log(`Using Xero bank account: ${bankAccounts[0].name} (ID: ${bankAccountID})`);
             }
-          } catch (accountError) {
-            this.logger.warn(`Could not fetch bank accounts from Xero, using default code '090'`);
+          } catch (accountError: any) {
+            this.logger.warn(`Could not fetch bank accounts from Xero: ${accountError?.message}`);
           }
 
-          const payment = {
-            invoice: { invoiceID: createdInvoice.invoiceID },
-            account: { code: bankAccountCode },
-            amount: invoiceTotal,
-            date: paymentDate,
-            reference: `Payment for Order #${orderId}`,
-          };
+          if (bankAccountID) {
+            const payments = {
+              payments: [{
+                invoice: { invoiceID: createdInvoice.invoiceID },
+                account: { accountID: bankAccountID },
+                amount: invoiceTotal,
+                date: paymentDate,
+                reference: `Payment for Order #${orderId}`,
+              }],
+            };
 
-          await this.xero.accountingApi.createPayment(tenantId, payment as any);
-          this.logger.log(`Xero payment recorded for invoice ${createdInvoice.invoiceNumber}`);
+            await this.xero.accountingApi.createPayments(tenantId, payments as any);
+            this.logger.log(`Xero payment recorded for invoice ${createdInvoice.invoiceNumber} - amount: $${invoiceTotal}`);
+          } else {
+            this.logger.warn(`No bank account found in Xero - cannot record payment for order #${orderId}`);
+          }
         } catch (paymentError: any) {
           const paymentErrMsg = paymentError?.response?.body?.Message || paymentError?.body?.Message || paymentError?.message || 'Unknown error';
-          this.logger.warn(`Failed to record payment in Xero for order #${orderId}: ${paymentErrMsg}. Invoice was created but not marked as paid.`);
+          this.logger.error(`Failed to record payment in Xero for order #${orderId}: ${paymentErrMsg}`);
+          // Log full error details for debugging
+          if (paymentError?.response?.body) {
+            this.logger.error(`Xero payment error details: ${JSON.stringify(paymentError.response.body)}`);
+          }
         }
       }
 
