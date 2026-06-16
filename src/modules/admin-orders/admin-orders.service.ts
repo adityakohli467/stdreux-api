@@ -1297,6 +1297,9 @@ export class AdminOrdersService implements OnModuleInit {
       }
     );
 
+    // Auto-sync to Xero when order is completed
+    this.autoSyncToXero(id);
+
     return this.findOne(id);
   }
 
@@ -1318,7 +1321,40 @@ export class AdminOrdersService implements OnModuleInit {
 
     await this.orderRepository.update({ order_id: id }, updateData);
 
+    // Auto-sync to Xero when order is delivered (completed)
+    if (packagingStatus === 3) {
+      this.autoSyncToXero(id);
+    }
+
     return this.findOne(id);
+  }
+
+  /**
+   * Auto-sync order to Xero (non-blocking)
+   * - Paid orders go to Paid tab (AUTHORISED + Payment)
+   * - Unpaid orders go to Awaiting Approval tab (SUBMITTED)
+   */
+  private autoSyncToXero(orderId: number): void {
+    // Run async without awaiting so it doesn't block the response
+    (async () => {
+      try {
+        const xeroStatus = await this.xeroService.isConnected();
+        if (!xeroStatus.connected) {
+          this.logger.warn(`[Xero Auto-Sync] Xero not connected, skipping sync for order #${orderId}`);
+          return;
+        }
+        const xeroResult = await this.xeroService.createInvoiceForOrder(orderId);
+        this.logger.log(`[Xero Auto-Sync] Order #${orderId} synced to Xero: ${xeroResult.invoiceNumber}`);
+      } catch (error: any) {
+        // Don't fail the order operation if Xero sync fails
+        const msg = error?.message || 'Unknown error';
+        if (msg.includes('already synced')) {
+          this.logger.log(`[Xero Auto-Sync] Order #${orderId} already synced, skipping`);
+        } else {
+          this.logger.error(`[Xero Auto-Sync] Failed to sync order #${orderId}: ${msg}`);
+        }
+      }
+    })();
   }
 
   async updatePackagingComment(id: number, packagingComment: string): Promise<any> {
