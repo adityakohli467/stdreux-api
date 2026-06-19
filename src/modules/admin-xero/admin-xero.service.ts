@@ -508,6 +508,117 @@ export class AdminXeroService implements OnModuleInit {
   }
 
   /**
+   * Get the Xero webhook signing key from environment
+   */
+  getWebhookKey(): string | null {
+    return this.configService.get<string>('XERO_WEBHOOK_KEY') || null;
+  }
+
+  /**
+   * Handle a Xero invoice webhook event.
+   * Fetches the invoice from Xero and if it's PAID, marks the corresponding order as paid.
+   */
+  async handleXeroInvoiceWebhook(
+    xeroInvoiceId: string,
+    tenantId: string,
+  ): Promise<void> {
+    try {
+      // Find matching order from our sync table
+      const syncResult = await this.dataSource.query(
+        `SELECT order_id FROM xero_invoice_sync WHERE xero_invoice_id = $1`,
+        [xeroInvoiceId],
+      );
+
+      if (syncResult.length === 0) {
+        this.logger.log(
+          `[Xero Webhook] No synced order found for Xero invoice ${xeroInvoiceId} — skipping`,
+        );
+        return;
+      }
+
+      const orderId = syncResult[0].order_id;
+
+      // Check if order is already paid
+      const orderResult = await this.dataSource.query(
+        `SELECT payment_status, order_status FROM orders WHERE order_id = $1`,
+        [orderId],
+      );
+
+      if (orderResult.length === 0) {
+        this.logger.warn(`[Xero Webhook] Order ${orderId} not found`);
+        return;
+      }
+
+      const order = orderResult[0];
+      if (
+        order.payment_status === 'succeeded' ||
+        order.payment_status === 'paid' ||
+        order.order_status === 2
+      ) {
+        this.logger.log(
+          `[Xero Webhook] Order ${orderId} already paid — skipping`,
+        );
+        return;
+      }
+
+      // Fetch invoice from Xero API to check its status
+      const tokens = await this.getStoredTokens();
+      if (!tokens) {
+        this.logger.error('[Xero Webhook] Xero not connected — cannot fetch invoice');
+        return;
+      }
+
+      await this.setTokensAndRefreshIfNeeded(tokens);
+      await this.xero.updateTenants();
+
+      const activeTenantId = tenantId || this.xero.tenants[0]?.tenantId;
+      if (!activeTenantId) {
+        this.logger.error('[Xero Webhook] No tenant available');
+        return;
+      }
+
+      const invoiceResponse = await this.xero.accountingApi.getInvoice(
+        activeTenantId,
+        xeroInvoiceId,
+      );
+      const invoice = invoiceResponse.body.invoices?.[0];
+
+      if (!invoice) {
+        this.logger.warn(
+          `[Xero Webhook] Could not fetch invoice ${xeroInvoiceId} from Xero`,
+        );
+        return;
+      }
+
+      this.logger.log(
+        `[Xero Webhook] Invoice ${invoice.invoiceNumber} status: ${invoice.status}`,
+      );
+
+      // Only mark as paid if invoice status is PAID in Xero
+      if (invoice.status === Invoice.StatusEnum.PAID) {
+        await this.dataSource.query(
+          `UPDATE orders 
+           SET order_status = 2,
+               payment_status = 'succeeded',
+               payment_date = COALESCE(payment_date, CURRENT_TIMESTAMP),
+               date_modified = CURRENT_TIMESTAMP
+           WHERE order_id = $1`,
+          [orderId],
+        );
+
+        this.logger.log(
+          `[Xero Webhook] Order #${orderId} marked as paid (Xero invoice ${invoice.invoiceNumber} is PAID)`,
+        );
+      }
+    } catch (error: any) {
+      this.logger.error(
+        `[Xero Webhook] Failed to process invoice ${xeroInvoiceId}: ${error.message}`,
+        error.stack,
+      );
+    }
+  }
+
+  /**
    * Proactively refresh Xero token every 7 days to prevent the refresh token from expiring.
    * Xero refresh tokens expire after 60 days of inactivity — this keeps the connection alive.
    */
