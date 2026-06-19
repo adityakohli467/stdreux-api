@@ -1514,6 +1514,8 @@ export class AdminOrdersService implements OnModuleInit {
         if (xeroStatus.connected) {
           const xeroResult = await this.xeroService.createInvoiceForOrder(id);
           this.logger.log(`[Xero] Invoice ${xeroResult.invoiceNumber} created for order ${id}`);
+        } else {
+          this.logger.warn(`[Xero] Not connected — skipping auto-sync for order ${id}`);
         }
       } catch (xeroError) {
         this.logger.error(`[Xero] Failed to create invoice for order ${id}:`, xeroError);

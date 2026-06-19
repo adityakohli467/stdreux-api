@@ -816,6 +816,8 @@ export class StorePaymentService {
         if (xeroStatus.connected) {
           const xeroResult = await this.xeroService.createInvoiceForOrder(parseInt(orderId.toString()));
           this.logger.log(`[Xero] Invoice ${xeroResult.invoiceNumber} created for order ${orderId}`);
+        } else {
+          this.logger.warn(`[Xero] Not connected — skipping auto-sync for order ${orderId}`);
         }
       } catch (xeroError) {
         this.logger.error(`[Xero] Failed to create invoice for order ${orderId}:`, xeroError);

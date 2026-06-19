@@ -88,6 +88,7 @@ export class AdminXeroService implements OnModuleInit {
     try {
       const tokens = await this.getStoredTokens();
       if (!tokens) {
+        this.logger.warn('[Xero] No stored tokens found — Xero not connected');
         return { connected: false };
       }
 
@@ -99,7 +100,8 @@ export class AdminXeroService implements OnModuleInit {
         connected: true,
         organisationName: activeTenant?.tenantName || 'Connected',
       };
-    } catch {
+    } catch (error: any) {
+      this.logger.error(`[Xero] Connection check failed: ${error?.message || 'Unknown error'}`);
       return { connected: false };
     }
   }
