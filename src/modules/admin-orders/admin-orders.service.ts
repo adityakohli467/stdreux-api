@@ -494,7 +494,7 @@ export class AdminOrdersService implements OnModuleInit {
           taxableAmount += parseFloat(product.total || 0);
         }
       }
-      gst = Math.round((taxableAmount + deliveryFee) / 11 * 100) / 100;
+      gst = Math.round((taxableAmount + deliveryFee) / 10 * 100) / 100;
     }
     const orderTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
 
@@ -715,7 +715,7 @@ export class AdminOrdersService implements OnModuleInit {
              WHERE pc.product_id = $1`, [product.product_id]);
           if (!catResult[0]?.is_gst_free) taxableAmount += lineTotal;
         }
-        gst = Math.round((taxableAmount + deliveryFeeAmount) / 11 * 100) / 100;
+        gst = Math.round((taxableAmount + deliveryFeeAmount) / 10 * 100) / 100;
       }
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 
@@ -986,7 +986,7 @@ export class AdminOrdersService implements OnModuleInit {
              WHERE pc.product_id = $1`, [product.product_id]);
           if (!catResult[0]?.is_gst_free) taxableAmount += lineTotal;
         }
-        gst = Math.round((taxableAmount + deliveryFeeAmount) / 11 * 100) / 100;
+        gst = Math.round((taxableAmount + deliveryFeeAmount) / 10 * 100) / 100;
       }
       const orderTotal = Math.round((afterDiscount + gst + deliveryFeeAmount) * 100) / 100;
 

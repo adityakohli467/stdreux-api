@@ -281,8 +281,8 @@ export class InvoiceService {
     const isWholesale = customerType.includes('Wholesale') || customerType.includes('Wholesaler');
     // Delivery fee is always taxable
     const totalTaxableWithDelivery = taxableItemsTotal + deliveryFee;
-    // GST is always totalTaxable / 11
-    const gst = Math.round((totalTaxableWithDelivery / 11) * 100) / 100;
+    // GST is always totalTaxable / 10
+    const gst = Math.round((totalTaxableWithDelivery / 10) * 100) / 100;
 
     const total = isWholesale
       ? Math.round((afterDiscount + deliveryFee + gst) * 100) / 100

@@ -124,7 +124,7 @@ export class AdminQuotesService {
     const quotes = result.map((row: any) => {
       const subtotal = productsMap.get(row.order_id) || 0;
       // GST is 10% of subtotal (Tax Exclusive logic)
-      const gst = Math.round((subtotal / 11) * 100) / 100;
+      const gst = Math.round((subtotal / 10) * 100) / 100;
       const orderTotal = parseFloat(row.order_total || 0);
 
       let statusLabel = 'Quote';
@@ -192,7 +192,7 @@ export class AdminQuotesService {
     const quote = result[0];
     const subtotal = quote.products.reduce((acc: number, p: any) => acc + parseFloat(p.total || 0), 0);
     // GST is 10% of subtotal (Tax Exclusive logic)
-    quote.gst = Math.round((subtotal / 11) * 100) / 100;
+    quote.gst = Math.round((subtotal / 10) * 100) / 100;
     quote.calculated_total = parseFloat(quote.order_total || 0);
 
     // Add delivery helper fields

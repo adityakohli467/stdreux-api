@@ -752,8 +752,8 @@ export class AdminPaymentsService {
       const deliveryFee = parseFloat(row.delivery_fee || 0);
 
       // Calculate GST and subtotal (consistent with AdminOrdersService)
-      // GST is 1/11th of the total excluding delivery fee
-      const gst = Math.round(((orderTotal - deliveryFee) / 11) * 100) / 100;
+      // GST is 1/10th of the total excluding delivery fee
+      const gst = Math.round(((orderTotal - deliveryFee) / 10) * 100) / 100;
       const subtotal = Math.round((orderTotal - deliveryFee - gst) * 100) / 100;
 
       return {

@@ -291,7 +291,7 @@ export class AdminReportsService {
       
       // Calculate GST on amount after discount
       const afterDiscount = subtotal - discount;
-      const gst = afterDiscount / 11; // GST = amount/11
+      const gst = afterDiscount / 10; // GST = amount/10
       
       // Total = subtotal - discount + GST + delivery fee
       const total = afterDiscount + gst + deliveryFee;
@@ -495,7 +495,7 @@ export class AdminReportsService {
         discount = Math.min(discount, subtotal);
       }
       const afterDiscount = subtotal - discount;
-      const gst = afterDiscount / 11; // GST = amount/11
+      const gst = afterDiscount / 10; // GST = amount/10
       const total = afterDiscount + gst + deliveryFee;
 
       return {
