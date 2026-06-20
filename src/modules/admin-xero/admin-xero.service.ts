@@ -68,9 +68,47 @@ export class AdminXeroService implements OnModuleInit {
       // Initialize the XeroClient OpenID client on startup
       await this.ensureInitialized();
 
-      this.logger.log('Xero tables ensured');
+      // Auto-restore Xero connection on server startup/deploy
+      await this.restoreConnection();
+
+      this.logger.log('Xero module ready');
     } catch (error) {
       this.logger.error('Failed to initialize Xero module:', error);
+    }
+  }
+
+  /**
+   * Automatically restore the Xero connection on server startup.
+   * Loads stored tokens and refreshes them so the connection is live
+   * without any manual admin action.
+   */
+  private async restoreConnection(): Promise<void> {
+    try {
+      const tokens = await this.getStoredTokens();
+      if (!tokens) {
+        this.logger.log('[Xero] No stored tokens — awaiting initial connection from admin');
+        return;
+      }
+
+      if (!tokens.refresh_token) {
+        this.logger.warn('[Xero] Stored tokens have no refresh_token — connection cannot be restored automatically');
+        return;
+      }
+
+      // Always force-refresh on startup to get a fresh access token
+      this.xero.setTokenSet(tokens);
+      const newTokenSet = await this.xero.refreshToken();
+
+      const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
+      const tenantId = tenantResult[0]?.tenant_id || '';
+      await this.saveTokens(newTokenSet, tenantId);
+
+      await this.xero.updateTenants();
+      const org = this.xero.tenants[0]?.tenantName || 'Unknown';
+      this.logger.log(`[Xero] Connection restored on startup — org: ${org}`);
+    } catch (error: any) {
+      this.logger.error(`[Xero] Failed to restore connection on startup: ${error?.message}`);
+      this.logger.error('[Xero] Auto-sync will not work until connection is restored. Will retry on next sync attempt.');
     }
   }
 
