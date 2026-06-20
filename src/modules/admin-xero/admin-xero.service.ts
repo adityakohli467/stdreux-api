@@ -9,6 +9,7 @@ import { Cron } from '@nestjs/schedule';
 export class AdminXeroService implements OnModuleInit {
   private readonly logger = new Logger(AdminXeroService.name);
   private xero: XeroClient;
+  private initialized = false;
 
   constructor(
     private configService: ConfigService,
@@ -20,6 +21,23 @@ export class AdminXeroService implements OnModuleInit {
       redirectUris: [this.configService.get<string>('XERO_REDIRECT_URI') || ''],
       scopes: (this.configService.get<string>('XERO_SCOPES') || 'openid profile email offline_access accounting.invoices accounting.contacts accounting.settings accounting.transactions').split(' '),
     });
+  }
+
+  /**
+   * Ensure the XeroClient's internal OpenID client is initialized.
+   * This must be called before any token operations (refresh, setTokenSet).
+   */
+  private async ensureInitialized(): Promise<void> {
+    if (!this.initialized) {
+      try {
+        await this.xero.initialize();
+        this.initialized = true;
+        this.logger.log('[Xero] Client initialized');
+      } catch (error: any) {
+        this.logger.error(`[Xero] Client initialization failed: ${error?.message}`);
+        throw error;
+      }
+    }
   }
 
   async onModuleInit() {
@@ -46,9 +64,13 @@ export class AdminXeroService implements OnModuleInit {
       await this.dataSource.query(`
         CREATE INDEX IF NOT EXISTS idx_xero_invoice_sync_order_id ON xero_invoice_sync(order_id)
       `);
+
+      // Initialize the XeroClient OpenID client on startup
+      await this.ensureInitialized();
+
       this.logger.log('Xero tables ensured');
     } catch (error) {
-      this.logger.error('Failed to create Xero tables:', error);
+      this.logger.error('Failed to initialize Xero module:', error);
     }
   }
 
@@ -56,6 +78,7 @@ export class AdminXeroService implements OnModuleInit {
    * Get the Xero authorization URL for OAuth consent
    */
   async getAuthUrl(): Promise<string> {
+    await this.ensureInitialized();
     const consentUrl = await this.xero.buildConsentUrl();
     return consentUrl;
   }
@@ -490,22 +513,44 @@ export class AdminXeroService implements OnModuleInit {
   }
 
   /**
-   * Set tokens on the client and refresh if expired
+   * Set tokens on the client and refresh if expired.
+   * Ensures client is initialized, retries once on transient failures.
    */
   private async setTokensAndRefreshIfNeeded(tokenSet: TokenSet): Promise<void> {
+    await this.ensureInitialized();
     this.xero.setTokenSet(tokenSet);
 
     if (tokenSet.expired()) {
       if (!tokenSet.refresh_token) {
-        // No refresh token available — user needs to reconnect
-        await this.dataSource.query(`DELETE FROM xero_tokens WHERE id = 1`);
         throw new BadRequestException('Xero token expired and no refresh token available. Please reconnect Xero.');
       }
-      const newTokenSet = await this.xero.refreshToken();
-      // Save the refreshed tokens
-      const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
-      const tenantId = tenantResult[0]?.tenant_id || '';
-      await this.saveTokens(newTokenSet, tenantId);
+
+      // Try refreshing with one retry for transient failures
+      let lastError: any;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const newTokenSet = await this.xero.refreshToken();
+          // Save the refreshed tokens
+          const tenantResult = await this.dataSource.query(`SELECT tenant_id FROM xero_tokens WHERE id = 1`);
+          const tenantId = tenantResult[0]?.tenant_id || '';
+          await this.saveTokens(newTokenSet, tenantId);
+          this.logger.log(`[Xero] Token refreshed successfully (attempt ${attempt + 1})`);
+          return;
+        } catch (error: any) {
+          lastError = error;
+          this.logger.warn(`[Xero] Token refresh attempt ${attempt + 1} failed: ${error?.message}`);
+          // If Xero explicitly says the refresh token is invalid/revoked, don't retry
+          if (error?.response?.statusCode === 400 && error?.response?.body?.error === 'invalid_grant') {
+            this.logger.error('[Xero] Refresh token has been revoked. Manual reconnection required.');
+            throw new BadRequestException('Xero refresh token revoked. Please reconnect Xero.');
+          }
+          // Wait 2 seconds before retry
+          if (attempt === 0) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+        }
+      }
+      throw lastError;
     }
   }
 
@@ -621,10 +666,12 @@ export class AdminXeroService implements OnModuleInit {
   }
 
   /**
-   * Proactively refresh Xero token every 7 days to prevent the refresh token from expiring.
-   * Xero refresh tokens expire after 60 days of inactivity — this keeps the connection alive.
+   * Proactively refresh Xero token daily to keep the connection alive.
+   * Xero access tokens expire after 30 minutes, refresh tokens after 60 days of inactivity.
+   * Running daily ensures the refresh token stays active.
+   * NestJS @Cron runs in-process — no external cron service needed.
    */
-  @Cron('0 4 */7 * *', { name: 'xero-token-refresh' })
+  @Cron('0 4 * * *', { name: 'xero-token-refresh' })
   async handleScheduledTokenRefresh(): Promise<void> {
     try {
       const tokens = await this.getStoredTokens();
@@ -632,6 +679,7 @@ export class AdminXeroService implements OnModuleInit {
         return; // No connection, nothing to refresh
       }
 
+      await this.ensureInitialized();
       this.xero.setTokenSet(tokens);
       const newTokenSet = await this.xero.refreshToken();
 
@@ -639,9 +687,9 @@ export class AdminXeroService implements OnModuleInit {
       const tenantId = tenantResult[0]?.tenant_id || '';
       await this.saveTokens(newTokenSet, tenantId);
 
-      this.logger.log('Xero token proactively refreshed via cron');
+      this.logger.log('[Xero] Token proactively refreshed via daily cron');
     } catch (error: any) {
-      this.logger.error('Scheduled Xero token refresh failed:', error.message);
+      this.logger.error(`[Xero] Scheduled token refresh failed: ${error?.message}`);
     }
   }
 }
