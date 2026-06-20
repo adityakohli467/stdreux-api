@@ -76,7 +76,7 @@ export class XeroWebhookController {
 
         if (
           event.eventCategory === 'INVOICE' &&
-          event.eventType === 'Update' &&
+          event.eventType?.toUpperCase() === 'UPDATE' &&
           event.resourceId
         ) {
           await this.xeroService.handleXeroInvoiceWebhook(
