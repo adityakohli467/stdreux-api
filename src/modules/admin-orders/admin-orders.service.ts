@@ -134,6 +134,7 @@ export class AdminOrdersService implements OnModuleInit {
       sqlQuery += ` AND c.customer_type IS NOT NULL`;
       sqlQuery += ` AND (c.customer_type LIKE '%Wholesale%' OR c.customer_type LIKE '%Wholesaler%')`;
       sqlQuery += ` AND o.order_status != 0`;
+      sqlQuery += ` AND COALESCE(o.is_completed::int, 0) != 1 AND o.order_status != 5`;
     } else {
       // Always exclude quotes (status 0) from orders list
       sqlQuery += ` AND o.order_status != 0`;

@@ -689,8 +689,7 @@ export class AdminXeroService implements OnModuleInit {
       if (invoice.status === Invoice.StatusEnum.PAID) {
         await this.dataSource.query(
           `UPDATE orders 
-           SET order_status = 2,
-               payment_status = 'succeeded',
+           SET payment_status = 'succeeded',
                payment_date = COALESCE(payment_date, CURRENT_TIMESTAMP),
                date_modified = CURRENT_TIMESTAMP
            WHERE order_id = $1`,
