@@ -214,9 +214,9 @@ export class AdminOrdersController {
   @Put(':id/mark-paid')
   @ApiOperation({ summary: 'Mark order as paid' })
   @ApiParam({ name: 'id', type: Number })
-  async markPaid(@Param('id', ParseIntPipe) id: number, @Request() req: any) {
+  async markPaid(@Param('id', ParseIntPipe) id: number, @Body() body: { comment?: string }, @Request() req: any) {
     const userId = req.user?.user_id || req.user?.id;
-    return this.adminOrdersService.markAsPaid(id, userId);
+    return this.adminOrdersService.markAsPaid(id, userId, body?.comment);
   }
 
 

@@ -31,7 +31,8 @@ export class AdminOrdersService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50),
         ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS subscription_start_date TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0
+        ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS mark_paid_comment TEXT
       `);
       this.logger.log('Ensured payment, subscription, and packaging columns exist in orders table');
     } catch (error) {
@@ -1369,7 +1370,7 @@ export class AdminOrdersService implements OnModuleInit {
     return this.findOne(id);
   }
 
-  async markAsPaid(id: number, userId?: number): Promise<any> {
+  async markAsPaid(id: number, userId?: number, comment?: string): Promise<any> {
     const order = await this.orderRepository.findOne({ where: { order_id: id } });
 
     if (!order) {
@@ -1391,9 +1392,10 @@ export class AdminOrdersService implements OnModuleInit {
              payment_gateway = 'manual',
              payment_transaction_id = $1,
              payment_response = $2,
+             mark_paid_comment = $4,
              date_modified = CURRENT_TIMESTAMP
          WHERE order_id = $3`,
-        [transactionId, JSON.stringify({ manual_payment: true, marked_by_user_id: userId }), id],
+        [transactionId, JSON.stringify({ manual_payment: true, marked_by_user_id: userId }), id, comment || null],
       );
 
       // Add to payment history
