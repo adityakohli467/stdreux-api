@@ -70,14 +70,15 @@ export class XeroWebhookController {
       this.logger.log(`[Xero Webhook] Received ${events.length} event(s)`);
 
       for (const event of events) {
+        this.logger.log(
+          `[Xero Webhook] Event: category=${event.eventCategory}, type=${event.eventType}, resourceId=${event.resourceId}, tenantId=${event.tenantId}`,
+        );
+
         if (
           event.eventCategory === 'INVOICE' &&
           event.eventType === 'Update' &&
           event.resourceId
         ) {
-          this.logger.log(
-            `[Xero Webhook] Invoice update: ${event.resourceId} (tenant: ${event.tenantId})`,
-          );
           await this.xeroService.handleXeroInvoiceWebhook(
             event.resourceId,
             event.tenantId,

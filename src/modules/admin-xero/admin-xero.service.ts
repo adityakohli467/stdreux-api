@@ -608,6 +608,8 @@ export class AdminXeroService implements OnModuleInit {
     tenantId: string,
   ): Promise<void> {
     try {
+      this.logger.log(`[Xero Webhook] Processing invoice ${xeroInvoiceId}`);
+
       // Find matching order from our sync table
       const syncResult = await this.dataSource.query(
         `SELECT order_id FROM xero_invoice_sync WHERE xero_invoice_id = $1`,
@@ -622,6 +624,7 @@ export class AdminXeroService implements OnModuleInit {
       }
 
       const orderId = syncResult[0].order_id;
+      this.logger.log(`[Xero Webhook] Found order #${orderId} for invoice ${xeroInvoiceId}`);
 
       // Check if order is already paid
       const orderResult = await this.dataSource.query(
@@ -635,10 +638,11 @@ export class AdminXeroService implements OnModuleInit {
       }
 
       const order = orderResult[0];
+      this.logger.log(`[Xero Webhook] Order #${orderId} current status: payment=${order.payment_status}, order_status=${order.order_status}`);
+
       if (
         order.payment_status === 'succeeded' ||
-        order.payment_status === 'paid' ||
-        order.order_status === 2
+        order.payment_status === 'paid'
       ) {
         this.logger.log(
           `[Xero Webhook] Order ${orderId} already paid — skipping`,
@@ -647,6 +651,8 @@ export class AdminXeroService implements OnModuleInit {
       }
 
       // Fetch invoice from Xero API to check its status
+      await this.ensureInitialized();
+
       const tokens = await this.getStoredTokens();
       if (!tokens) {
         this.logger.error('[Xero Webhook] Xero not connected — cannot fetch invoice');
