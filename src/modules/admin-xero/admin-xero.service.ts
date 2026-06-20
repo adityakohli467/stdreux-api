@@ -277,7 +277,7 @@ export class AdminXeroService implements OnModuleInit {
            FROM product_category pc JOIN category c ON pc.category_id = c.category_id
            WHERE pc.product_id = $1`, [product.product_id]);
         const isGstFree = catResult[0]?.is_gst_free === true;
-        const taxType = isGstFree ? 'NONE' : 'OUTPUT';
+        const taxType = isGstFree ? 'EXEMPTOUTPUT' : 'OUTPUT';
 
         const productOptions = options.filter((o: any) => o.order_product_id === product.order_product_id);
 
