@@ -385,6 +385,7 @@ export class StoreProductsService {
     // Get customer ID and discounts
     let customerId: number | null = null;
     let productDiscountsMap = new Map<number, number>();
+    let companyProductDiscountsMap = new Map<number, number>();
 
     if (userId) {
       try {
@@ -408,6 +409,13 @@ export class StoreProductsService {
               productDiscountsMap.set(row.product_id, parseFloat(row.discount_percentage));
             }
           });
+
+          // Get company-level discounts (override customer/wholesale/retail pricing)
+          const companyId = await this.pricingService.getCompanyIdForCustomer(customerId);
+          if (companyId) {
+            const companyDiscounts = await this.pricingService.getCompanyDiscounts(companyId);
+            companyProductDiscountsMap = companyDiscounts.productDiscounts;
+          }
         }
       } catch (error) {
         this.logger.error('Error fetching customer discounts:', error);
@@ -433,6 +441,7 @@ export class StoreProductsService {
 
       // Get product-level discount (prioritize customer_product_discount over general discount)
       const productDiscount = productDiscountsMap.get(product.product_id) || 0;
+      const companyDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
 
       // Use pricing service for consistent calculations
       const pricing = this.pricingService.calculateProductPrice(
@@ -442,6 +451,7 @@ export class StoreProductsService {
         isWholesaler,
         productDiscount,
         userPrice,
+        companyDiscount,
       );
 
       // Map options
@@ -654,7 +664,9 @@ export class StoreProductsService {
     // Get customer ID and discounts
     let customerId: number | null = null;
     let productDiscount = 0;
+    let companyProductDiscount = 0;
     const optionDiscountsMap = new Map<number, number>();
+    const companyOptionDiscountsMap = new Map<number, number>();
 
     if (userId) {
       try {
@@ -689,6 +701,19 @@ export class StoreProductsService {
               optionDiscountsMap.set(row.option_value_id, parseFloat(row.discount_percentage));
             }
           });
+
+          // Get company-level discounts (override customer/wholesale/retail pricing)
+          const companyId = await this.pricingService.getCompanyIdForCustomer(customerId);
+          if (companyId) {
+            const companyDiscounts = await this.pricingService.getCompanyDiscounts(companyId);
+            companyProductDiscount = companyDiscounts.productDiscounts.get(Number(id)) || 0;
+            companyDiscounts.optionDiscounts.forEach((value, key) => {
+              const [pid, optId] = key.split('_').map((v) => parseInt(v));
+              if (pid === Number(id) && optId) {
+                companyOptionDiscountsMap.set(optId, value);
+              }
+            });
+          }
         }
       } catch (error) {
         this.logger.error('Error fetching customer discounts:', error);
@@ -708,6 +733,7 @@ export class StoreProductsService {
       isWholesaler,
       productDiscount,
       userPrice,
+      companyProductDiscount,
     );
 
     // Apply option discounts using pricing service
@@ -720,6 +746,7 @@ export class StoreProductsService {
           ? parseFloat(value.wholesale_price)
           : null;
         const optionDiscount = optionDiscountsMap.get(value.option_value_id) || 0;
+        const companyOptionDiscount = companyOptionDiscountsMap.get(value.option_value_id) || 0;
 
         if (isWholesaler && (optionWholesalePrice === null || isNaN(optionWholesalePrice))) {
           if (retailDiscountPercentage !== null && retailDiscountPercentage !== undefined && retailDiscountPercentage > 0) {
@@ -733,6 +760,7 @@ export class StoreProductsService {
           baseOptionPrice,
           isWholesaler,
           optionDiscount,
+          companyOptionDiscount,
         );
 
         return {

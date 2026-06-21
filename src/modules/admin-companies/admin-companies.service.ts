@@ -16,6 +16,8 @@ export class AdminCompaniesService {
   async findAll(query: any): Promise<any> {
     const { limit = 100, offset = 0, search, status } = query;
 
+    await this.ensureCompanyPricingSchema();
+
     let sqlQuery = 'SELECT * FROM company WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
@@ -60,6 +62,8 @@ export class AdminCompaniesService {
   }
 
   async findOne(id: number): Promise<any> {
+    await this.ensureCompanyPricingSchema();
+
     const companyResult = await this.dataSource.query('SELECT * FROM company WHERE company_id = $1', [id]);
 
     if (companyResult.length === 0) {
@@ -79,18 +83,20 @@ export class AdminCompaniesService {
       throw new BadRequestException('Invalid request body');
     }
 
-    const { company_name, company_abn, company_phone, company_address, company_status } = createCompanyDto;
+    const { company_name, company_abn, company_phone, company_address, company_status, pay_later } = createCompanyDto;
 
     if (!company_name || (typeof company_name === 'string' && !company_name.trim())) {
       throw new BadRequestException('Company name is required');
     }
 
+    await this.ensureCompanyPricingSchema();
+
     try {
       const result = await this.dataSource.query(
-        `INSERT INTO company (company_name, company_abn, company_phone, company_address, company_status, company_created_on) 
-         VALUES ($1, $2, $3, $4, $5, NOW()) 
+        `INSERT INTO company (company_name, company_abn, company_phone, company_address, company_status, pay_later, company_created_on) 
+         VALUES ($1, $2, $3, $4, $5, $6, NOW()) 
          RETURNING *`,
-        [company_name, company_abn || null, company_phone, company_address || null, company_status || 1],
+        [company_name, company_abn || null, company_phone, company_address || null, company_status || 1, pay_later === true],
       );
 
       return { company: result[0], message: 'Company created successfully' };
@@ -103,14 +109,16 @@ export class AdminCompaniesService {
   }
 
   async update(id: number, updateCompanyDto: any): Promise<any> {
-    const { company_name, company_abn, company_phone, company_address, company_status } = updateCompanyDto;
+    const { company_name, company_abn, company_phone, company_address, company_status, pay_later } = updateCompanyDto;
+
+    await this.ensureCompanyPricingSchema();
 
     const result = await this.dataSource.query(
       `UPDATE company 
-       SET company_name = $1, company_abn = $2, company_phone = $3, company_address = $4, company_status = COALESCE($5, company_status)
-       WHERE company_id = $6
+       SET company_name = $1, company_abn = $2, company_phone = $3, company_address = $4, company_status = COALESCE($5, company_status), pay_later = COALESCE($6, pay_later)
+       WHERE company_id = $7
        RETURNING *`,
-      [company_name, company_abn || null, company_phone, company_address || null, company_status, id],
+      [company_name, company_abn || null, company_phone, company_address || null, company_status, pay_later === undefined ? null : pay_later === true, id],
     );
 
     if (result.length === 0) {
@@ -252,6 +260,189 @@ export class AdminCompaniesService {
         throw new BadRequestException('Database schema is out of date. Please contact administrator.');
       }
       throw error;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Company-level pricing (discounts) + pay_later
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Ensure the company-pricing schema exists (lazy migration).
+   * Creates the company discount tables and the pay_later column if missing.
+   */
+  private async ensureCompanyPricingSchema(): Promise<void> {
+    try {
+      await this.dataSource.query(
+        `ALTER TABLE company ADD COLUMN IF NOT EXISTS pay_later boolean NOT NULL DEFAULT false`,
+      );
+
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS company_product_discount (
+          company_product_discount_id SERIAL PRIMARY KEY,
+          company_id INTEGER NOT NULL,
+          product_id INTEGER NOT NULL,
+          discount_percentage NUMERIC(5,2) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_company_product_discount UNIQUE (company_id, product_id)
+        )
+      `);
+
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS company_product_option_discount (
+          company_product_option_discount_id SERIAL PRIMARY KEY,
+          company_id INTEGER NOT NULL,
+          product_id INTEGER NOT NULL,
+          option_value_id INTEGER NOT NULL,
+          discount_percentage NUMERIC(5,2) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT uq_company_product_option_discount UNIQUE (company_id, product_id, option_value_id)
+        )
+      `);
+    } catch (error) {
+      this.logger.error('Error ensuring company pricing schema:', error);
+    }
+  }
+
+  /**
+   * Get all products with their options and the company's existing discounts.
+   * Mirrors the customer-level discount editor.
+   */
+  async getCompanyProductOptionDiscounts(companyId: number): Promise<any> {
+    await this.ensureCompanyPricingSchema();
+
+    // Company pricing uses the standard (retail) base price as the reference.
+    const productsWithOptionsQuery = `
+      SELECT 
+        p.product_id, 
+        p.product_name,
+        (
+          SELECT json_agg(
+            json_build_object(
+              'product_option_id', po.product_option_id,
+              'option_value_id', ov.option_value_id,
+              'option_value_name', ov.name,
+              'option_base_price', COALESCE(ov.standard_price, po.option_price, 0),
+              'option_price', COALESCE(ov.standard_price, po.option_price, 0),
+              'option_price_prefix', po.option_price_prefix,
+              'discount_percentage', COALESCE(cpod.discount_percentage, 0),
+              'company_product_option_discount_id', cpod.company_product_option_discount_id
+            ) ORDER BY ov.sort_order
+          )
+          FROM product_option po
+          JOIN option_value ov ON po.option_value_id = ov.option_value_id
+          LEFT JOIN company_product_option_discount cpod 
+            ON cpod.company_id = $1 
+            AND cpod.product_id = p.product_id 
+            AND cpod.option_value_id = ov.option_value_id
+          WHERE po.product_id = p.product_id
+        ) as options
+      FROM product p
+      WHERE p.product_status = 1
+        AND EXISTS (
+          SELECT 1 FROM product_option po WHERE po.product_id = p.product_id
+        )
+      ORDER BY p.product_name
+    `;
+
+    const productsWithoutOptionsQuery = `
+      SELECT 
+        p.product_id, 
+        p.product_name,
+        p.product_price,
+        COALESCE(cpd.discount_percentage, 0) as discount_percentage,
+        cpd.company_product_discount_id
+      FROM product p
+      LEFT JOIN company_product_discount cpd 
+        ON cpd.company_id = $1 
+        AND cpd.product_id = p.product_id
+      WHERE p.product_status = 1
+        AND NOT EXISTS (
+          SELECT 1 FROM product_option po WHERE po.product_id = p.product_id
+        )
+      ORDER BY p.product_name
+    `;
+
+    const [productsWithOptionsResult, productsWithoutOptionsResult] = await Promise.all([
+      this.dataSource.query(productsWithOptionsQuery, [companyId]),
+      this.dataSource.query(productsWithoutOptionsQuery, [companyId]),
+    ]);
+
+    const productsWithOptions = productsWithOptionsResult.map((p: any) => ({
+      product_id: p.product_id,
+      product_name: p.product_name,
+      options: p.options || [],
+      has_options: true,
+    }));
+
+    const productsWithoutOptions = productsWithoutOptionsResult.map((p: any) => ({
+      product_id: p.product_id,
+      product_name: p.product_name,
+      product_price: parseFloat(p.product_price || 0),
+      discount_percentage: parseFloat(p.discount_percentage || 0),
+      company_product_discount_id: p.company_product_discount_id,
+      has_options: false,
+    }));
+
+    return {
+      products: [...productsWithOptions, ...productsWithoutOptions],
+      productsWithOptions,
+      productsWithoutOptions,
+    };
+  }
+
+  /**
+   * Replace the company's product-level and option-level discounts.
+   */
+  async setCompanyProductOptionDiscounts(companyId: number, discounts: any[]): Promise<any> {
+    await this.ensureCompanyPricingSchema();
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const optionDiscounts = discounts.filter(
+        (d) => d.option_value_id !== undefined && d.option_value_id !== null,
+      );
+      const productDiscounts = discounts.filter(
+        (d) => d.option_value_id === undefined || d.option_value_id === null,
+      );
+
+      await queryRunner.query('DELETE FROM company_product_option_discount WHERE company_id = $1', [companyId]);
+      await queryRunner.query('DELETE FROM company_product_discount WHERE company_id = $1', [companyId]);
+
+      for (const discount of optionDiscounts) {
+        if (discount.discount_percentage > 0) {
+          await queryRunner.query(
+            `INSERT INTO company_product_option_discount (company_id, product_id, option_value_id, discount_percentage)
+             VALUES ($1, $2, $3, $4)`,
+            [companyId, discount.product_id, discount.option_value_id, discount.discount_percentage],
+          );
+        }
+      }
+
+      for (const discount of productDiscounts) {
+        if (discount.discount_percentage > 0) {
+          await queryRunner.query(
+            `INSERT INTO company_product_discount (company_id, product_id, discount_percentage)
+             VALUES ($1, $2, $3)
+             ON CONFLICT (company_id, product_id) 
+             DO UPDATE SET discount_percentage = EXCLUDED.discount_percentage, updated_at = CURRENT_TIMESTAMP`,
+            [companyId, discount.product_id, discount.discount_percentage],
+          );
+        }
+      }
+
+      await queryRunner.commitTransaction();
+      return { message: 'Company product and option discounts updated successfully' };
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
     }
   }
 }

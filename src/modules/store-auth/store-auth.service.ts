@@ -64,6 +64,28 @@ export class StoreAuthService implements OnModuleInit {
   }
 
   /**
+   * Build the effective pay_later SQL expression.
+   * Effective pay_later = customer.pay_later OR company.pay_later.
+   * Falls back to customer-only if the company.pay_later column does not exist yet.
+   */
+  private async getEffectivePayLaterClause(): Promise<string> {
+    try {
+      const cols = await this.dataSource.query(`
+        SELECT 1 
+        FROM information_schema.columns 
+        WHERE table_name = 'company' AND column_name = 'pay_later'
+        LIMIT 1
+      `);
+      if (cols.length > 0) {
+        return '(COALESCE(c.pay_later, false) OR COALESCE(co.pay_later, false))';
+      }
+    } catch (error) {
+      this.logger.error('Error checking company.pay_later column:', error);
+    }
+    return 'COALESCE(c.pay_later, false)';
+  }
+
+  /**
    * Customer Login
    */
   async login(username: string, password: string): Promise<any> {
@@ -97,10 +119,11 @@ export class StoreAuthService implements OnModuleInit {
     }
 
     // Get customer details
+    const payLaterClause = await this.getEffectivePayLaterClause();
     const customerQuery = `
       SELECT 
         c.*,
-        COALESCE(c.pay_later, false) as pay_later,
+        ${payLaterClause} as pay_later,
         co.company_name,
         d.department_name
       FROM customer c
@@ -684,10 +707,11 @@ export class StoreAuthService implements OnModuleInit {
     }
 
     // Get customer details with company and department
+    const payLaterClause = await this.getEffectivePayLaterClause();
     const customerQuery = `
       SELECT 
         c.*,
-        COALESCE(c.pay_later, false) as pay_later,
+        ${payLaterClause} as pay_later,
         co.company_name,
         co.company_abn as abn,
         d.department_name

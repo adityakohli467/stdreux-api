@@ -53,6 +53,22 @@ export class AdminCompaniesController {
     return { message: 'Company deleted successfully' };
   }
 
+  // Company-level pricing (discounts)
+  @Get(':id/product-option-discounts')
+  @ApiOperation({ summary: 'Get company product and option discounts' })
+  async getProductOptionDiscounts(@Param('id', ParseIntPipe) id: number) {
+    return this.adminCompaniesService.getCompanyProductOptionDiscounts(id);
+  }
+
+  @Post(':id/product-option-discounts')
+  @ApiOperation({ summary: 'Set company product and option discounts' })
+  async setProductOptionDiscounts(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { discounts: any[] },
+  ) {
+    return this.adminCompaniesService.setCompanyProductOptionDiscounts(id, body?.discounts || []);
+  }
+
   // Department endpoints
   @Get('departments/list')
   @ApiOperation({ summary: 'List all departments' })

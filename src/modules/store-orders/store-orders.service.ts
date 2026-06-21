@@ -186,6 +186,31 @@ export class StoreOrdersService {
       const { productDiscounts: productDiscountsMap, optionDiscounts: optionDiscountsMap } =
         await this.pricingService.getCustomerDiscounts(customer.customer_id);
 
+      // Get company-level discounts (override customer/wholesale/retail pricing) and
+      // resolve effective pay_later (customer OR company)
+      let companyProductDiscountsMap = new Map<number, number>();
+      let companyOptionDiscountsMap = new Map<string, number>();
+      const companyId = await this.pricingService.getCompanyIdForCustomer(customer.customer_id);
+      if (companyId) {
+        const companyDiscounts = await this.pricingService.getCompanyDiscounts(companyId);
+        companyProductDiscountsMap = companyDiscounts.productDiscounts;
+        companyOptionDiscountsMap = companyDiscounts.optionDiscounts;
+
+        if (!customer.pay_later) {
+          try {
+            const companyPayLater = await queryRunner.query(
+              `SELECT COALESCE(pay_later, false) as pay_later FROM company WHERE company_id = $1`,
+              [companyId],
+            );
+            if (companyPayLater.length > 0 && companyPayLater[0].pay_later) {
+              customer.pay_later = true;
+            }
+          } catch (error) {
+            // company.pay_later column may not exist yet; ignore
+          }
+        }
+      }
+
       // Calculate order total with product-option-level and product-level discounts
       let subtotal = 0;
       const orderItems: any[] = [];
@@ -214,6 +239,7 @@ export class StoreOrdersService {
         }
 
         const productDiscount = productDiscountsMap.get(product.product_id) || 0;
+        const companyProductDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
 
         const pricing = this.pricingService.calculateProductPrice(
           retailPrice,
@@ -221,7 +247,8 @@ export class StoreOrdersService {
           retailDiscountPercentage,
           isWholesale,
           productDiscount,
-          userPrice
+          userPrice,
+          companyProductDiscount,
         );
 
         // Calculate item total using the calculated price
@@ -239,6 +266,7 @@ export class StoreOrdersService {
             if (option.option_value_id) {
               const discountKey = `${product.product_id}_${option.option_value_id}`;
               const optionDiscount = optionDiscountsMap.get(discountKey) || 0;
+              const companyOptionDiscount = companyOptionDiscountsMap.get(discountKey) || 0;
 
               const baseOptionPrice = parseFloat(option.option_price || option.price || 0);
 
@@ -247,7 +275,8 @@ export class StoreOrdersService {
                 null, // wholesalePrice (unknown without lookup)
                 baseOptionPrice,
                 isWholesale,
-                optionDiscount
+                optionDiscount,
+                companyOptionDiscount,
               );
 
               if (optionPricing.finalPrice > 0) {

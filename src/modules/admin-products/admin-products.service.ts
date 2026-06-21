@@ -86,6 +86,7 @@ export class AdminProductsService {
     search?: string;
     status?: number;
     customer_id?: number; // Optional: if provided, prices will be calculated based on customer type and discounts
+    company_id?: number; // Optional: if provided, company-level pricing overrides customer pricing
   }) {
     const { limit = 20, offset = 0, search, status } = filters;
 
@@ -175,6 +176,8 @@ export class AdminProductsService {
     let isWholesale = false;
     const productDiscountsMap = new Map<number, number>();
     const optionDiscountsMap = new Map<string, number>();
+    const companyProductDiscountsMap = new Map<number, number>();
+    const companyOptionDiscountsMap = new Map<string, number>();
 
     if (filters.customer_id) {
       try {
@@ -213,12 +216,24 @@ export class AdminProductsService {
       }
     }
 
+    // Resolve effective company_id (explicit company_id wins, else customer's company)
+    let effectiveCompanyId: number | null = filters.company_id || null;
+    if (!effectiveCompanyId && filters.customer_id) {
+      effectiveCompanyId = await this.pricingService.getCompanyIdForCustomer(filters.customer_id);
+    }
+    if (effectiveCompanyId) {
+      const companyDiscounts = await this.pricingService.getCompanyDiscounts(effectiveCompanyId);
+      companyDiscounts.productDiscounts.forEach((value, key) => companyProductDiscountsMap.set(key, value));
+      companyDiscounts.optionDiscounts.forEach((value, key) => companyOptionDiscountsMap.set(key, value));
+    }
+
     // Apply pricing based on customer type and discounts using pricing service
     const productsWithPricing = result.map((product: any) => {
       const retailPrice = parseFloat(product.product_price || 0);
       const wholesalePrice = product.retail_price ? parseFloat(product.retail_price || 0) : null;
       const retailDiscountPercentage = product.retail_discount_percentage ? parseFloat(product.retail_discount_percentage) : null;
       const productDiscount = productDiscountsMap.get(product.product_id) || 0;
+      const companyProductDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
 
       // Use pricing service for consistent calculations
       const pricing = this.pricingService.calculateProductPrice(
@@ -227,6 +242,8 @@ export class AdminProductsService {
         retailDiscountPercentage,
         isWholesale,
         productDiscount,
+        null,
+        companyProductDiscount,
       );
 
       // Process options with pricing using pricing service
@@ -238,6 +255,7 @@ export class AdminProductsService {
           const optionWholesalePrice = option.wholesale_price ? parseFloat(option.wholesale_price) : null;
           const optionKey = `${product.product_id}_${option.option_value_id}`;
           const optionDiscount = optionDiscountsMap.get(optionKey) || 0;
+          const companyOptionDiscount = companyOptionDiscountsMap.get(optionKey) || 0;
 
           const optionPricing = this.pricingService.calculateOptionPrice(
             standardPrice,
@@ -245,6 +263,7 @@ export class AdminProductsService {
             baseOptionPrice,
             isWholesale,
             optionDiscount,
+            companyOptionDiscount,
           );
 
           return {
@@ -299,7 +318,7 @@ export class AdminProductsService {
     };
   }
 
-  async getProduct(id: number, customer_id?: number) {
+  async getProduct(id: number, customer_id?: number, company_id?: number) {
     // Check if subscriber_price column exists on option_value
     const subPriceCheck = await this.dataSource.query(`
       SELECT 1 FROM information_schema.columns 
@@ -373,6 +392,8 @@ export class AdminProductsService {
     let isWholesale = false;
     const productDiscountsMap = new Map<number, number>();
     const optionDiscountsMap = new Map<string, number>();
+    const companyOptionDiscountsMap = new Map<string, number>();
+    let companyProductDiscount = 0;
 
     if (customer_id) {
       try {
@@ -411,6 +432,22 @@ export class AdminProductsService {
       }
     }
 
+    // Resolve effective company_id (explicit company_id wins, else customer's company)
+    let effectiveCompanyId: number | null = company_id || null;
+    if (!effectiveCompanyId && customer_id) {
+      effectiveCompanyId = await this.pricingService.getCompanyIdForCustomer(customer_id);
+    }
+    if (effectiveCompanyId) {
+      const companyDiscounts = await this.pricingService.getCompanyDiscounts(effectiveCompanyId);
+      companyProductDiscount = companyDiscounts.productDiscounts.get(Number(id)) || 0;
+      companyDiscounts.optionDiscounts.forEach((value, key) => {
+        const [pid] = key.split('_').map((v) => parseInt(v));
+        if (pid === Number(id)) {
+          companyOptionDiscountsMap.set(key, value);
+        }
+      });
+    }
+
     // Apply pricing based on customer type and discounts
     const retailPrice = parseFloat(product.product_price || 0);
     const wholesalePrice = product.retail_price ? parseFloat(product.retail_price || 0) : null;
@@ -424,6 +461,8 @@ export class AdminProductsService {
       retailDiscountPercentage,
       isWholesale,
       productDiscount,
+      null,
+      companyProductDiscount,
     );
 
     // Process options with pricing using pricing service
@@ -435,6 +474,7 @@ export class AdminProductsService {
         const optionWholesalePrice = option.wholesale_price ? parseFloat(option.wholesale_price) : null;
         const optionKey = `${id}_${option.option_value_id}`;
         const optionDiscount = optionDiscountsMap.get(optionKey) || 0;
+        const companyOptionDiscount = companyOptionDiscountsMap.get(optionKey) || 0;
 
         const optionPricing = this.pricingService.calculateOptionPrice(
           standardPrice,
@@ -442,6 +482,7 @@ export class AdminProductsService {
           baseOptionPrice,
           isWholesale,
           optionDiscount,
+          companyOptionDiscount,
         );
 
         return {

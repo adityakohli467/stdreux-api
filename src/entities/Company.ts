@@ -30,6 +30,9 @@ export class Company {
   @Column({ type: "int", default: 1 })
   company_status!: number
 
+  @Column({ type: "boolean", default: false })
+  pay_later!: boolean
+
   @CreateDateColumn({ name: "company_created_on" })
   company_created_on!: Date
 

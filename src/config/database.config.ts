@@ -26,6 +26,8 @@ import { Setting } from '../entities/Setting';
 import { Coupon } from '../entities/Coupon';
 import { CustomerProductDiscount } from '../entities/CustomerProductDiscount';
 import { CustomerProductOptionDiscount } from '../entities/CustomerProductOptionDiscount';
+import { CompanyProductDiscount } from '../entities/CompanyProductDiscount';
+import { CompanyProductOptionDiscount } from '../entities/CompanyProductOptionDiscount';
 import { FutureOrder } from '../entities/FutureOrder';
 import { Notification } from '../entities/Notification';
 
@@ -89,6 +91,8 @@ export const getDatabaseConfig = (configService: ConfigService): TypeOrmModuleOp
       Coupon,
       CustomerProductDiscount,
       CustomerProductOptionDiscount,
+      CompanyProductDiscount,
+      CompanyProductOptionDiscount,
       FutureOrder,
       Notification,
     ],

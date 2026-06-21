@@ -29,6 +29,8 @@ import { UserRole } from '../entities/UserRole';
 import { Permission } from '../entities/Permission';
 import { CustomerProductDiscount } from '../entities/CustomerProductDiscount';
 import { CustomerProductOptionDiscount } from '../entities/CustomerProductOptionDiscount';
+import { CompanyProductDiscount } from '../entities/CompanyProductDiscount';
+import { CompanyProductOptionDiscount } from '../entities/CompanyProductOptionDiscount';
 import { FutureOrder } from '../entities/FutureOrder';
 import { Notification } from '../entities/Notification';
 
@@ -65,6 +67,8 @@ import { Notification } from '../entities/Notification';
       Permission,
       CustomerProductDiscount,
       CustomerProductOptionDiscount,
+      CompanyProductDiscount,
+      CompanyProductOptionDiscount,
       FutureOrder,
       Notification,
     ]),

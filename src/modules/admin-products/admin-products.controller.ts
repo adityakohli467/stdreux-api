@@ -33,12 +33,14 @@ export class AdminProductsController {
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: Number })
   @ApiQuery({ name: 'customer_id', required: false, type: Number, description: 'Optional: Calculate prices based on customer type and discounts' })
+  @ApiQuery({ name: 'company_id', required: false, type: Number, description: 'Optional: Apply company-level pricing (overrides customer pricing)' })
   async listProducts(
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
     @Query('search') search?: string,
     @Query('status') status?: string,
     @Query('customer_id') customer_id?: string,
+    @Query('company_id') company_id?: string,
   ) {
     return this.adminProductsService.listProducts({
       limit: limit ? parseInt(limit) : 20,
@@ -46,6 +48,7 @@ export class AdminProductsController {
       search,
       status: status ? parseInt(status) : undefined,
       customer_id: customer_id ? parseInt(customer_id) : undefined,
+      company_id: company_id ? parseInt(company_id) : undefined,
     });
   }
 
@@ -53,11 +56,13 @@ export class AdminProductsController {
   @ApiOperation({ summary: 'Get single product' })
   @ApiParam({ name: 'id', type: Number })
   @ApiQuery({ name: 'customer_id', required: false, type: Number, description: 'Optional: Calculate prices based on customer type and discounts' })
+  @ApiQuery({ name: 'company_id', required: false, type: Number, description: 'Optional: Apply company-level pricing (overrides customer pricing)' })
   async getProduct(
     @Param('id', ParseIntPipe) id: number,
     @Query('customer_id') customer_id?: string,
+    @Query('company_id') company_id?: string,
   ) {
-    return this.adminProductsService.getProduct(id, customer_id ? parseInt(customer_id) : undefined);
+    return this.adminProductsService.getProduct(id, customer_id ? parseInt(customer_id) : undefined, company_id ? parseInt(company_id) : undefined);
   }
 
   @Post()
