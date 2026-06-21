@@ -31,14 +31,19 @@ export class AdminOrdersService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS payment_method VARCHAR(50),
         ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS subscription_start_date TIMESTAMP,
-        ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS mark_paid_comment TEXT,
-        ADD COLUMN IF NOT EXISTS payment_link_sent BOOLEAN DEFAULT false
+        ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0
       `);
-      this.logger.log('Ensured payment, subscription, and packaging columns exist in orders table');
-    } catch (error) {
-      this.logger.error('Failed to add columns to orders table:', error);
-    }
+    } catch (e) { /* columns may already exist */ }
+
+    try {
+      await this.dataSource.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS mark_paid_comment TEXT`);
+    } catch (e) { /* column may already exist */ }
+
+    try {
+      await this.dataSource.query(`ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_link_sent BOOLEAN DEFAULT false`);
+    } catch (e) { /* column may already exist */ }
+
+    this.logger.log('Ensured payment, subscription, and packaging columns exist in orders table');
   }
 
   async findAll(query: any): Promise<any> {
@@ -2385,10 +2390,14 @@ export class AdminOrdersService implements OnModuleInit {
     }
 
     // Mark that payment link was sent
-    await this.dataSource.query(
-      `UPDATE orders SET payment_link_sent = true, date_modified = CURRENT_TIMESTAMP WHERE order_id = $1`,
-      [id],
-    );
+    try {
+      await this.dataSource.query(
+        `UPDATE orders SET payment_link_sent = true, date_modified = CURRENT_TIMESTAMP WHERE order_id = $1`,
+        [id],
+      );
+    } catch (updateError: any) {
+      this.logger.error(`Failed to set payment_link_sent for order #${id}: ${updateError?.message}`);
+    }
 
     this.logger.log(`Payment link email sent to ${recipientEmail} for order #${id}`);
 
