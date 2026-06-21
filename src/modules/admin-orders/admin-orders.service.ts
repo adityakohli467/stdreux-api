@@ -348,6 +348,8 @@ export class AdminOrdersService implements OnModuleInit {
         packaging_status: row.packaging_status || 0,
         is_completed: row.is_completed || 0,
         xero_synced: row.xero_synced || false,
+        payment_link_sent: row.payment_link_sent || false,
+        mark_paid_comment: row.mark_paid_comment || null,
       };
     });
 
