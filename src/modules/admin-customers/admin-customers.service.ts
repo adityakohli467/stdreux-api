@@ -123,7 +123,7 @@ export class AdminCustomersService implements OnModuleInit {
       sqlQuery += ` AND NOT (c.created_from = 'storefront' AND COALESCE(c.approved, false) = false)`;
     }
 
-    sqlQuery += ' ORDER BY c.customer_date_added DESC';
+    sqlQuery += ' ORDER BY c.firstname ASC, c.lastname ASC';
     sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(Number(limit), Number(offset));
 
@@ -736,7 +736,7 @@ export class AdminCustomersService implements OnModuleInit {
       paramIndex++;
     }
 
-    sqlQuery += ' ORDER BY c.customer_date_added DESC';
+    sqlQuery += ' ORDER BY c.firstname ASC, c.lastname ASC';
     sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(Number(limit), Number(offset));
 

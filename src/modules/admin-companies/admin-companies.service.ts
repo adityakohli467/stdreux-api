@@ -32,7 +32,7 @@ export class AdminCompaniesService {
       paramIndex++;
     }
 
-    sqlQuery += ' ORDER BY company_created_on DESC';
+    sqlQuery += ' ORDER BY company_name ASC';
     sqlQuery += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(Number(limit), Number(offset));
 
