@@ -687,13 +687,15 @@ export class AdminXeroService implements OnModuleInit {
 
       // Only mark as paid if invoice status is PAID in Xero
       if (invoice.status === Invoice.StatusEnum.PAID) {
+        const paidDate = new Date().toLocaleDateString('en-AU', { day: '2-digit', month: 'short', year: 'numeric' });
         await this.dataSource.query(
           `UPDATE orders 
            SET payment_status = 'succeeded',
                payment_date = COALESCE(payment_date, CURRENT_TIMESTAMP),
+               mark_paid_comment = $2,
                date_modified = CURRENT_TIMESTAMP
            WHERE order_id = $1`,
-          [orderId],
+          [orderId, `Mark paid through Xero on ${paidDate}`],
         );
 
         this.logger.log(
