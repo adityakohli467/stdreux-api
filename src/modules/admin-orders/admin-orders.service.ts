@@ -312,9 +312,9 @@ export class AdminOrdersService implements OnModuleInit {
       }
 
       const afterDiscount = afterWholesaleDiscount - couponDiscount;
-      const gst = 0; // Removed GST
       const deliveryFee = parseFloat(row.delivery_fee || 0);
-      const calculatedTotal = Math.round((afterDiscount + gst + deliveryFee) * 100) / 100;
+      // Use stored order_total from DB (already includes GST) instead of recalculating
+      const calculatedTotal = parseFloat(row.order_total || 0);
 
       return {
         order_id: row.order_id,
@@ -341,7 +341,7 @@ export class AdminOrdersService implements OnModuleInit {
         date_modified: row.date_modified,
         coupon_code: couponCode,
         coupon_discount: couponDiscount,
-        gst,
+        gst: Math.max(0, calculatedTotal - afterDiscount - deliveryFee),
         order_made_from: row.order_made_from,
         payment_method: row.payment_method,
         payment_status: (row.payment_status === 'succeeded' || row.has_successful_payment || row.order_status === 2) ? 'Paid' : (row.payment_status === 'pay_later' ? 'Pay Later' : 'Not Paid'),
