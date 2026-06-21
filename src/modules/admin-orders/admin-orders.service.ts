@@ -244,8 +244,6 @@ export class AdminOrdersService implements OnModuleInit {
     sqlQuery += ` ORDER BY o.date_added DESC, o.delivery_date_time DESC NULLS LAST`;
     sqlQuery += ` LIMIT $${paramIndex++} OFFSET $${paramIndex++}`;
     params.push(Number(limit), Number(offset));
-    console.log("Final SQL Query:", sqlQuery);
-    console.log("Query Parameters:", params);
 
     const result = await this.dataSource.query(sqlQuery, params);
 

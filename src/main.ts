@@ -146,7 +146,6 @@ async function bootstrap() {
     }
     try {
       const zipPath = '/tmp/uploads_migration.zip';
-      console.log(`[Migration] Downloading from: ${url}`);
       execSync(`wget -O "${zipPath}" "${url}"`, { stdio: 'pipe', timeout: 600000 });
       execSync(`unzip -o "${zipPath}" -d "${uploadsDir}"`, { stdio: 'pipe', timeout: 300000 });
       fs.unlinkSync(zipPath);
@@ -160,12 +159,5 @@ async function bootstrap() {
   const port = process.env.PORT || 8000;
   await app.listen(port, '0.0.0.0');
 
-  console.log('\n' + '='.repeat(60));
-  console.log('🚀 STX API Server Started Successfully!');
-  console.log('='.repeat(60));
-  console.log(`📖 Swagger Documentation: http://localhost:${port}/api-docs`);
-  console.log(`💚 Health Check:         http://localhost:${port}/health`);
-  console.log(`🔐 Auth API:              http://localhost:${port}/auth`);
-  console.log('='.repeat(60) + '\n');
 }
 bootstrap();

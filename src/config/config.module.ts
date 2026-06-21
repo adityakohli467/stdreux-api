@@ -15,7 +15,6 @@ import { initializeSecrets } from './secrets.config';
         ) {
           try {
             await initializeSecrets();
-            console.log('✅ Secrets loaded from AWS Secrets Manager');
           } catch (error) {
             console.error('❌ Error loading secrets:', error);
             console.warn('⚠️  Falling back to environment variables');

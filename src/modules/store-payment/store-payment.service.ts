@@ -197,7 +197,6 @@ export class StorePaymentService {
 
         // Check if a registered account exists for this email in either the "user" table OR linked in "customer" table
         const searchEmail = email.trim().toLowerCase();
-        console.log(`[StorePaymentService] Checking email for guest payment intent: "${searchEmail}"`);
         
         const userAccount = await queryRunner.query(
           'SELECT user_id, email, username FROM "user" WHERE LOWER(TRIM(email)) = $1 LIMIT 1',
@@ -205,7 +204,6 @@ export class StorePaymentService {
         );
 
         if (userAccount.length > 0) {
-          console.log(`[StorePaymentService] BLOCKED registered email: "${searchEmail}". User ID: ${userAccount[0].user_id}`);
           throw new BadRequestException("This email is already associated with a registered account. Please log in to complete your purchase.");
         }
 
@@ -214,11 +212,9 @@ export class StorePaymentService {
           [searchEmail]
         );
         if (linkedCustomer.length > 0) {
-          console.log(`[StorePaymentService] BLOCKED email found with user_id in customer table: "${searchEmail}"`);
           throw new BadRequestException("This email is already associated with a registered account. Please log in to complete your purchase.");
         }
 
-        console.log(`[StorePaymentService] Email "${searchEmail}" not found as registered, proceeding as guest.`);
 
         const guestCustomerQuery = `
           SELECT c.customer_id, c.telephone as customer_phone, c.email as customer_email, c.firstname, c.lastname, c.user_id
