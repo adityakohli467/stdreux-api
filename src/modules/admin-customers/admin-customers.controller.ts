@@ -34,6 +34,12 @@ export class AdminCustomersController {
     return this.adminCustomersService.getPendingApprovalCustomers(query);
   }
 
+  @Post(':id/map-company')
+  @ApiOperation({ summary: 'Map a pending customer to an existing company or approve their new company' })
+  async mapCompany(@Param('id', ParseIntPipe) id: number, @Body() body: { company_id?: number; approve_new?: boolean }) {
+    return this.adminCustomersService.mapCompanyToCustomer(id, body);
+  }
+
   @Get()
   @ApiOperation({ summary: 'List all customers' })
   async findAll(@Query() query: any) {

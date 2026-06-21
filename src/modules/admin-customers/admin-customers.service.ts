@@ -763,7 +763,95 @@ export class AdminCustomersService implements OnModuleInit {
     const countResult = await this.dataSource.query(countQuery, countParams);
     const total = parseInt(countResult[0]?.total || '0', 10);
 
-    return { customers, total };
+    // For each customer with a company, find similar existing companies
+    const enrichedCustomers = await Promise.all(
+      customers.map(async (customer: any) => {
+        if (!customer.company_name) return { ...customer, has_similar_company: false, similar_companies: [] };
+
+        // Find companies with similar names (using trigram similarity or ILIKE)
+        const similarQuery = `
+          SELECT company_id, company_name 
+          FROM company 
+          WHERE company_id != $1
+            AND company_status = 1
+            AND (
+              company_name ILIKE $2
+              OR company_name ILIKE $3
+              OR LOWER(company_name) = LOWER($4)
+            )
+          ORDER BY company_name ASC
+          LIMIT 10
+        `;
+        const name = customer.company_name.trim();
+        const similarCompanies = await this.dataSource.query(similarQuery, [
+          customer.company_id || 0,
+          `%${name}%`,
+          `${name.substring(0, Math.max(3, Math.floor(name.length * 0.6)))}%`,
+          name,
+        ]);
+
+        return {
+          ...customer,
+          has_similar_company: similarCompanies.length > 0,
+          similar_companies: similarCompanies,
+        };
+      })
+    );
+
+    return { customers: enrichedCustomers, total };
+  }
+
+  /**
+   * Map a pending customer to an existing company or approve their submitted company
+   */
+  async mapCompanyToCustomer(customerId: number, body: { company_id?: number; approve_new?: boolean }): Promise<any> {
+    const customer = await this.dataSource.query(
+      `SELECT c.*, co.company_name FROM customer c LEFT JOIN company co ON c.company_id = co.company_id WHERE c.customer_id = $1`,
+      [customerId],
+    );
+
+    if (!customer || customer.length === 0) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    const cust = customer[0];
+
+    if (body.company_id) {
+      // Map to existing company - update customer's company_id
+      const existingCompany = await this.dataSource.query(
+        `SELECT company_id, company_name FROM company WHERE company_id = $1`,
+        [body.company_id],
+      );
+
+      if (!existingCompany || existingCompany.length === 0) {
+        throw new BadRequestException('Selected company not found');
+      }
+
+      // If customer had a newly created company from registration, delete it (if no other customers use it)
+      if (cust.company_id && cust.company_id !== body.company_id) {
+        const otherCustomers = await this.dataSource.query(
+          `SELECT COUNT(*) as count FROM customer WHERE company_id = $1 AND customer_id != $2`,
+          [cust.company_id, customerId],
+        );
+        if (parseInt(otherCustomers[0]?.count || '0', 10) === 0) {
+          // No other customers use this company, safe to delete
+          await this.dataSource.query(`DELETE FROM company WHERE company_id = $1`, [cust.company_id]);
+        }
+      }
+
+      // Update customer to use the existing company
+      await this.dataSource.query(
+        `UPDATE customer SET company_id = $1 WHERE customer_id = $2`,
+        [body.company_id, customerId],
+      );
+
+      return { success: true, message: `Customer mapped to company: ${existingCompany[0].company_name}` };
+    } else if (body.approve_new) {
+      // Approve the company submitted by customer (keep as is - company already created during registration)
+      return { success: true, message: `Company "${cust.company_name}" approved as new company` };
+    } else {
+      throw new BadRequestException('Either company_id or approve_new must be provided');
+    }
   }
 
   /**
