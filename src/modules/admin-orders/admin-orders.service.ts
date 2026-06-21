@@ -32,7 +32,8 @@ export class AdminOrdersService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS payment_status VARCHAR(50) DEFAULT 'pending',
         ADD COLUMN IF NOT EXISTS subscription_start_date TIMESTAMP,
         ADD COLUMN IF NOT EXISTS packaging_status INT DEFAULT 0,
-        ADD COLUMN IF NOT EXISTS mark_paid_comment TEXT
+        ADD COLUMN IF NOT EXISTS mark_paid_comment TEXT,
+        ADD COLUMN IF NOT EXISTS payment_link_sent BOOLEAN DEFAULT false
       `);
       this.logger.log('Ensured payment, subscription, and packaging columns exist in orders table');
     } catch (error) {
@@ -93,6 +94,8 @@ export class AdminOrdersService implements OnModuleInit {
         ${hasCustomerFrom ? 'o.customer_from' : "'portal'"} as order_made_from,
         ${hasPaymentMethod ? 'o.payment_method' : "NULL as payment_method"},
         ${hasPaymentStatus ? 'o.payment_status' : "NULL as payment_status"},
+        COALESCE(o.payment_link_sent, false) as payment_link_sent,
+        o.mark_paid_comment,
         c.firstname,
         c.lastname,
         c.email,
@@ -2380,6 +2383,12 @@ export class AdminOrdersService implements OnModuleInit {
     if (!result.success) {
       throw new BadRequestException(`Failed to send payment link email: ${result.error}`);
     }
+
+    // Mark that payment link was sent
+    await this.dataSource.query(
+      `UPDATE orders SET payment_link_sent = true, date_modified = CURRENT_TIMESTAMP WHERE order_id = $1`,
+      [id],
+    );
 
     this.logger.log(`Payment link email sent to ${recipientEmail} for order #${id}`);
 
