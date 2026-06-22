@@ -27,6 +27,9 @@ export class Product {
   @Column({ type: "varchar", length: 255 })
   product_name!: string
 
+  @Column({ type: "varchar", length: 100, nullable: true })
+  product_code!: string
+
   @Column({ type: "text", nullable: true })
   product_description!: string
 

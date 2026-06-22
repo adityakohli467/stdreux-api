@@ -54,6 +54,7 @@ export class AdminProductsService {
       { name: 'you_may_also_like', sql: `ALTER TABLE product ADD COLUMN you_may_also_like boolean DEFAULT false` },
       { name: 'show_in_checkout', sql: `ALTER TABLE product ADD COLUMN show_in_checkout boolean DEFAULT false` },
       { name: 'roast_level', sql: `ALTER TABLE product ADD COLUMN roast_level varchar(255)` },
+      { name: 'product_code', sql: `ALTER TABLE product ADD COLUMN product_code varchar(100)` },
       { name: 'show_specifications', sql: `ALTER TABLE product ADD COLUMN show_specifications boolean DEFAULT false` },
       { name: 'show_other_info', sql: `ALTER TABLE product ADD COLUMN show_other_info boolean DEFAULT false` },
       { name: 'premium_discount_percentage', sql: `ALTER TABLE product ADD COLUMN premium_discount_percentage decimal(5,2)` },
@@ -521,6 +522,7 @@ export class AdminProductsService {
       product_description?: string;
       short_description?: string;
       roast_level?: string;
+      product_code?: string;
       show_specifications?: boolean;
       show_other_info?: boolean;
       product_price: number;
@@ -595,6 +597,7 @@ export class AdminProductsService {
         product_description,
         short_description,
         roast_level,
+        product_code,
         show_specifications,
         show_other_info,
         product_price,
@@ -686,6 +689,7 @@ export class AdminProductsService {
 
       const columns: string[] = [
         'product_name',
+        'product_code',
         'product_description',
         'short_description',
         'roast_level',
@@ -717,6 +721,7 @@ export class AdminProductsService {
       ];
       const values: any[] = [
         product_name,
+        product_code || null,
         product_description || '',
         short_description || null,
         roast_level || null,
@@ -860,6 +865,7 @@ export class AdminProductsService {
       product_description?: string;
       short_description?: string;
       roast_level?: string;
+      product_code?: string;
       show_specifications?: boolean;
       show_other_info?: boolean;
       product_price?: number;
@@ -932,6 +938,7 @@ export class AdminProductsService {
         product_description,
         short_description,
         roast_level,
+        product_code,
         show_specifications,
         show_other_info,
         product_price,
@@ -1017,6 +1024,10 @@ export class AdminProductsService {
       if (roast_level !== undefined) {
         updateFields.push(`roast_level = $${paramIndex++}`);
         updateParams.push(roast_level || null);
+      }
+      if (product_code !== undefined) {
+        updateFields.push(`product_code = $${paramIndex++}`);
+        updateParams.push(product_code || null);
       }
       if (show_specifications !== undefined) {
         updateFields.push(`show_specifications = $${paramIndex++}`);

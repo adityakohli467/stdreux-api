@@ -277,6 +277,10 @@ export class AdminCompaniesService {
         `ALTER TABLE company ADD COLUMN IF NOT EXISTS pay_later boolean NOT NULL DEFAULT false`,
       );
 
+      await this.dataSource.query(
+        `ALTER TABLE product ADD COLUMN IF NOT EXISTS product_code varchar(100)`,
+      );
+
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS company_product_discount (
           company_product_discount_id SERIAL PRIMARY KEY,
@@ -318,6 +322,25 @@ export class AdminCompaniesService {
       SELECT 
         p.product_id, 
         p.product_name,
+        p.product_code,
+        p.product_price,
+        (
+          SELECT c.category_name
+          FROM product_category pc
+          JOIN category c ON pc.category_id = c.category_id
+          WHERE pc.product_id = p.product_id
+          ORDER BY c.sort_order, c.category_id
+          LIMIT 1
+        ) as category_name,
+        (
+          SELECT COALESCE(MIN(c.sort_order), 9999)
+          FROM product_category pc
+          JOIN category c ON pc.category_id = c.category_id
+          WHERE pc.product_id = p.product_id
+        ) as category_sort_order,
+        (
+          SELECT sc.category_name FROM category sc WHERE sc.category_id = p.subcategory_id
+        ) as subcategory_name,
         (
           SELECT json_agg(
             json_build_object(
@@ -344,14 +367,32 @@ export class AdminCompaniesService {
         AND EXISTS (
           SELECT 1 FROM product_option po WHERE po.product_id = p.product_id
         )
-      ORDER BY p.product_name
+      ORDER BY category_sort_order, category_name NULLS LAST, p.product_name
     `;
 
     const productsWithoutOptionsQuery = `
       SELECT 
         p.product_id, 
         p.product_name,
+        p.product_code,
         p.product_price,
+        (
+          SELECT c.category_name
+          FROM product_category pc
+          JOIN category c ON pc.category_id = c.category_id
+          WHERE pc.product_id = p.product_id
+          ORDER BY c.sort_order, c.category_id
+          LIMIT 1
+        ) as category_name,
+        (
+          SELECT COALESCE(MIN(c.sort_order), 9999)
+          FROM product_category pc
+          JOIN category c ON pc.category_id = c.category_id
+          WHERE pc.product_id = p.product_id
+        ) as category_sort_order,
+        (
+          SELECT sc.category_name FROM category sc WHERE sc.category_id = p.subcategory_id
+        ) as subcategory_name,
         COALESCE(cpd.discount_percentage, 0) as discount_percentage,
         cpd.company_product_discount_id
       FROM product p
@@ -362,7 +403,7 @@ export class AdminCompaniesService {
         AND NOT EXISTS (
           SELECT 1 FROM product_option po WHERE po.product_id = p.product_id
         )
-      ORDER BY p.product_name
+      ORDER BY category_sort_order, category_name NULLS LAST, p.product_name
     `;
 
     const [productsWithOptionsResult, productsWithoutOptionsResult] = await Promise.all([
@@ -373,6 +414,11 @@ export class AdminCompaniesService {
     const productsWithOptions = productsWithOptionsResult.map((p: any) => ({
       product_id: p.product_id,
       product_name: p.product_name,
+      product_code: p.product_code || null,
+      category_name: p.category_name || null,
+      category_sort_order: p.category_sort_order != null ? Number(p.category_sort_order) : 9999,
+      subcategory_name: p.subcategory_name || null,
+      product_price: parseFloat(p.product_price || 0),
       options: p.options || [],
       has_options: true,
     }));
@@ -380,14 +426,28 @@ export class AdminCompaniesService {
     const productsWithoutOptions = productsWithoutOptionsResult.map((p: any) => ({
       product_id: p.product_id,
       product_name: p.product_name,
+      product_code: p.product_code || null,
+      category_name: p.category_name || null,
+      category_sort_order: p.category_sort_order != null ? Number(p.category_sort_order) : 9999,
+      subcategory_name: p.subcategory_name || null,
       product_price: parseFloat(p.product_price || 0),
       discount_percentage: parseFloat(p.discount_percentage || 0),
       company_product_discount_id: p.company_product_discount_id,
       has_options: false,
     }));
 
+    const allProducts = [...productsWithOptions, ...productsWithoutOptions].sort((a, b) => {
+      if (a.category_sort_order !== b.category_sort_order) {
+        return a.category_sort_order - b.category_sort_order;
+      }
+      const catA = a.category_name || '';
+      const catB = b.category_name || '';
+      if (catA !== catB) return catA.localeCompare(catB);
+      return a.product_name.localeCompare(b.product_name);
+    });
+
     return {
-      products: [...productsWithOptions, ...productsWithoutOptions],
+      products: allProducts,
       productsWithOptions,
       productsWithoutOptions,
     };
