@@ -1201,6 +1201,12 @@ export class AdminOrdersService implements OnModuleInit {
 
     await this.orderRepository.update({ order_id: id }, updateData);
 
+    // When status is changed to Completed (5), send the payment link + invoice PDF
+    // (skips if already paid). The dedicated email replaces the generic status email below.
+    if (Number(orderStatus) === 5) {
+      this.sendCompletionPaymentLink(id);
+    }
+
     // Send email notification for important status changes
     try {
       const orderData = await this.findOne(id);
@@ -1225,7 +1231,8 @@ export class AdminOrdersService implements OnModuleInit {
         const companyName = this.configService.get<string>('COMPANY_NAME') || 'Sendrix';
 
         // Only send email for important status changes
-        if ([0, 2, 3, 5, 7, 8].includes(orderStatus)) {
+        // Status 5 (completed) is handled separately via the payment link email above
+        if ([0, 2, 3, 7, 8].includes(orderStatus)) {
           const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -1312,6 +1319,9 @@ export class AdminOrdersService implements OnModuleInit {
     // Auto-sync to Xero when order is completed
     this.autoSyncToXero(id);
 
+    // Send payment link + invoice PDF to customer (skips if already paid)
+    this.sendCompletionPaymentLink(id);
+
     return this.findOne(id);
   }
 
@@ -1336,6 +1346,9 @@ export class AdminOrdersService implements OnModuleInit {
     // Auto-sync to Xero when order is delivered (completed)
     if (packagingStatus === 3) {
       this.autoSyncToXero(id);
+
+      // Send payment link + invoice PDF to customer (skips if already paid)
+      this.sendCompletionPaymentLink(id);
     }
 
     return this.findOne(id);
@@ -1365,6 +1378,35 @@ export class AdminOrdersService implements OnModuleInit {
         } else {
           this.logger.error(`[Xero Auto-Sync] Failed to sync order #${orderId}: ${msg}`);
         }
+      }
+    })();
+  }
+
+  /**
+   * Send the payment link email (with invoice PDF attached) when an order is
+   * marked completed / delivered. Non-blocking and skips orders already paid.
+   */
+  private sendCompletionPaymentLink(orderId: number): void {
+    // Run async without awaiting so it doesn't block the response
+    (async () => {
+      try {
+        const orderData = await this.findOne(orderId);
+        const order = orderData.order;
+
+        // Skip if the order is already paid (findOne maps payment_status to a label)
+        const paymentStatus = String(order.payment_status || '').toLowerCase();
+        const isPaid = order.order_status === 2 || paymentStatus === 'paid';
+
+        if (isPaid) {
+          this.logger.log(`[Completion Payment Link] Order #${orderId} already paid, skipping payment link`);
+          return;
+        }
+
+        await this.sendPaymentLink(orderId);
+        this.logger.log(`[Completion Payment Link] Payment link sent for completed order #${orderId}`);
+      } catch (error: any) {
+        // Don't fail the completion if the email fails
+        this.logger.error(`[Completion Payment Link] Failed to send payment link for order #${orderId}: ${error?.message || error}`);
       }
     })();
   }
