@@ -484,11 +484,14 @@ export class AdminCustomersService implements OnModuleInit {
   }
 
   async delete(id: number): Promise<void> {
-    // Check if customer exists
-    const customer = await this.dataSource.query('SELECT customer_id FROM customer WHERE customer_id = $1', [id]);
+    // Check if customer exists (also grab the linked login user_id so we can remove
+    // the orphaned "user" record afterwards - otherwise the email stays registered
+    // and blocks re-registration from the storefront).
+    const customer = await this.dataSource.query('SELECT customer_id, user_id FROM customer WHERE customer_id = $1', [id]);
     if (!customer.length) {
       throw new NotFoundException('Customer not found');
     }
+    const linkedUserId: number | null = customer[0].user_id ?? null;
 
     // Delete related records to avoid foreign key constraint violations
     const queryRunner = this.dataSource.createQueryRunner();
@@ -529,6 +532,35 @@ export class AdminCustomersService implements OnModuleInit {
       throw error;
     } finally {
       await queryRunner.release();
+    }
+
+    // Remove the orphaned login user so the email/username is freed up and no longer
+    // appears as "already registered" when the storefront tries to create a new account.
+    // Done outside the main transaction (best-effort) so the customer deletion above is
+    // never rolled back by an unexpected foreign-key reference.
+    if (linkedUserId) {
+      try {
+        // Clear remaining references to the user before removing it
+        await this.dataSource.query('DELETE FROM password_reset_tokens WHERE user_id = $1', [linkedUserId]).catch(() => {});
+        await this.dataSource.query('UPDATE api_history SET user_id = NULL WHERE user_id = $1', [linkedUserId]).catch(() => {});
+        await this.dataSource.query('UPDATE company SET user_id = NULL WHERE user_id = $1', [linkedUserId]).catch(() => {});
+        await this.dataSource.query('UPDATE orders SET user_id = NULL WHERE user_id = $1', [linkedUserId]).catch(() => {});
+
+        await this.dataSource.query('DELETE FROM "user" WHERE user_id = $1', [linkedUserId]);
+      } catch (err) {
+        // If the user row can't be hard-deleted (e.g. an unknown FK still references it),
+        // fall back to anonymising it so the original email/username is freed for re-use.
+        await this.dataSource
+          .query(
+            `UPDATE "user"
+             SET email = CONCAT('deleted_', user_id, '@deleted.local'),
+                 login_username = CONCAT('deleted_', user_id),
+                 is_customer = 0
+             WHERE user_id = $1`,
+            [linkedUserId],
+          )
+          .catch(() => {});
+      }
     }
   }
 

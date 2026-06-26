@@ -1199,12 +1199,16 @@ export class AdminOrdersService implements OnModuleInit {
       }
     }
 
+    // Determine the paid state BEFORE the status is overwritten to Completed (5),
+    // so the automated completion payment-link email is never sent for a paid order.
+    const wasPaidBeforeUpdate = Number(orderStatus) === 5 ? await this.isOrderPaid(id, order) : false;
+
     await this.orderRepository.update({ order_id: id }, updateData);
 
     // When status is changed to Completed (5), send the payment link + invoice PDF
     // (skips if already paid). The dedicated email replaces the generic status email below.
     if (Number(orderStatus) === 5) {
-      this.sendCompletionPaymentLink(id);
+      this.sendCompletionPaymentLink(id, wasPaidBeforeUpdate);
     }
 
     // Send email notification for important status changes
@@ -1306,6 +1310,10 @@ export class AdminOrdersService implements OnModuleInit {
       throw new NotFoundException('Order not found');
     }
 
+    // Determine the paid state BEFORE marking completed, so a paid order is never
+    // emailed the automated completion payment link.
+    const alreadyPaid = await this.isOrderPaid(id, order);
+
     // Set is_completed = 1 and order_status = 5 (Completed)
     await this.orderRepository.update(
       { order_id: id },
@@ -1320,7 +1328,7 @@ export class AdminOrdersService implements OnModuleInit {
     this.autoSyncToXero(id);
 
     // Send payment link + invoice PDF to customer (skips if already paid)
-    this.sendCompletionPaymentLink(id);
+    this.sendCompletionPaymentLink(id, alreadyPaid);
 
     return this.findOne(id);
   }
@@ -1335,6 +1343,10 @@ export class AdminOrdersService implements OnModuleInit {
     // Update packaging_status: 0=New Order, 1=Printed, 2=Packed, 3=Delivered
     const updateData: any = { packaging_status: packagingStatus, date_modified: new Date() };
 
+    // Determine the paid state BEFORE the status is overwritten on delivery, so a
+    // paid order is never emailed the automated completion payment link.
+    const alreadyPaid = packagingStatus === 3 ? await this.isOrderPaid(id, order) : false;
+
     // If delivered (3), also mark as completed
     if (packagingStatus === 3) {
       updateData.order_status = 5;
@@ -1348,7 +1360,7 @@ export class AdminOrdersService implements OnModuleInit {
       this.autoSyncToXero(id);
 
       // Send payment link + invoice PDF to customer (skips if already paid)
-      this.sendCompletionPaymentLink(id);
+      this.sendCompletionPaymentLink(id, alreadyPaid);
     }
 
     return this.findOne(id);
@@ -1383,19 +1395,59 @@ export class AdminOrdersService implements OnModuleInit {
   }
 
   /**
+   * Robustly determine whether an order has already been paid.
+   *
+   * Checks (in order, any match = paid):
+   *  - the raw orders.payment_status column ('succeeded' | 'paid' | 'completed')
+   *  - the legacy order_status === 2 ("Paid") flag
+   *  - any successful payment_history record for the order
+   *
+   * This is intentionally independent of order_status being overwritten to
+   * Completed (5) / Delivered, so a paid order is correctly detected even after
+   * it has been marked complete.
+   */
+  private async isOrderPaid(
+    id: number,
+    rawOrder?: { order_status?: number; payment_status?: string | null } | null,
+  ): Promise<boolean> {
+    const order = rawOrder ?? (await this.orderRepository.findOne({ where: { order_id: id } }) as any);
+
+    if (order) {
+      const ps = String(order.payment_status || '').toLowerCase();
+      if (['succeeded', 'paid', 'completed'].includes(ps)) {
+        return true;
+      }
+      if (Number(order.order_status) === 2) {
+        return true;
+      }
+    }
+
+    try {
+      const rows = await this.dataSource.query(
+        `SELECT 1 FROM payment_history WHERE order_id = $1 AND payment_status = 'succeeded' LIMIT 1`,
+        [id],
+      );
+      if (rows.length > 0) {
+        return true;
+      }
+    } catch (error) {
+      // payment_history table may not exist in some environments - ignore
+    }
+
+    return false;
+  }
+
+  /**
    * Send the payment link email (with invoice PDF attached) when an order is
    * marked completed / delivered. Non-blocking and skips orders already paid.
    */
-  private sendCompletionPaymentLink(orderId: number): void {
+  private sendCompletionPaymentLink(orderId: number, alreadyPaid?: boolean): void {
     // Run async without awaiting so it doesn't block the response
     (async () => {
       try {
-        const orderData = await this.findOne(orderId);
-        const order = orderData.order;
-
-        // Skip if the order is already paid (findOne maps payment_status to a label)
-        const paymentStatus = String(order.payment_status || '').toLowerCase();
-        const isPaid = order.order_status === 2 || paymentStatus === 'paid';
+        // Prefer the paid state captured before the order was marked completed.
+        // Fall back to a fresh robust check if it wasn't provided.
+        const isPaid = alreadyPaid ?? await this.isOrderPaid(orderId);
 
         if (isPaid) {
           this.logger.log(`[Completion Payment Link] Order #${orderId} already paid, skipping payment link`);
