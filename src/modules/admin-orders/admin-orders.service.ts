@@ -795,7 +795,7 @@ export class AdminOrdersService implements OnModuleInit {
       const placeholders = baseCols.map((_, i) => `$${i + 1}`).join(', ');
 
       const orderResult = await queryRunner.query(
-        `INSERT INTO orders (${baseCols.join(', ')}) VALUES (${placeholders}) RETURNING *`,
+        `INSERT INTO orders (${baseCols.join(', ')}, date_added, date_modified) VALUES (${placeholders}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) RETURNING *`,
         baseValues,
       );
 

@@ -35,6 +35,7 @@ export class AdminReportsService {
     delivery_date_from?: string;
     delivery_date_to?: string;
     location_id?: number;
+    company?: string;
     status?: string;
     search?: string;
     limit?: number;
@@ -46,6 +47,7 @@ export class AdminReportsService {
       delivery_date_from,
       delivery_date_to,
       location_id,
+      company,
       status,
       search,
       limit = 100,
@@ -55,14 +57,19 @@ export class AdminReportsService {
     let query = `
       SELECT 
         o.order_id,
-        o.date_added as order_date,
+        COALESCE(o.date_added, o.date_modified, o.delivery_date_time) AS order_date,
         o.delivery_date_time,
         o.order_status,
         o.order_total,
         o.delivery_fee,
         COALESCE(cp.coupon_discount, 0) as coupon_discount,
         cp.type as coupon_type,
-        c.firstname || ' ' || c.lastname as customer_name,
+        COALESCE(
+          NULLIF(TRIM(CONCAT_WS(' ', c.firstname, c.lastname)), ''),
+          NULLIF(TRIM(o.customer_order_name), ''),
+          NULLIF(TRIM(CONCAT_WS(' ', o.firstname, o.lastname)), ''),
+          NULLIF(TRIM(o.email), '')
+        ) AS customer_name,
         c.customer_id,
         comp.company_name,
         d.department_name,
@@ -80,27 +87,28 @@ export class AdminReportsService {
     const params: any[] = [];
     let paramIndex = 1;
 
-    // Date filters
+    // Date filters (filter on the coalesced order date, cast column to ::date so the
+    // "to" bound is inclusive of the whole selected day)
     if (order_date_from) {
-      query += ` AND o.date_added >= $${paramIndex}::date`;
+      query += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date >= $${paramIndex}::date`;
       params.push(order_date_from);
       paramIndex++;
     }
 
     if (order_date_to) {
-      query += ` AND o.date_added <= $${paramIndex}::date`;
+      query += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date <= $${paramIndex}::date`;
       params.push(order_date_to);
       paramIndex++;
     }
 
     if (delivery_date_from) {
-      query += ` AND o.delivery_date_time >= $${paramIndex}::date`;
+      query += ` AND o.delivery_date_time::date >= $${paramIndex}::date`;
       params.push(delivery_date_from);
       paramIndex++;
     }
 
     if (delivery_date_to) {
-      query += ` AND o.delivery_date_time <= $${paramIndex}::date`;
+      query += ` AND o.delivery_date_time::date <= $${paramIndex}::date`;
       params.push(delivery_date_to);
       paramIndex++;
     }
@@ -109,6 +117,13 @@ export class AdminReportsService {
     if (location_id) {
       query += ` AND o.location_id = $${paramIndex}`;
       params.push(Number(location_id));
+      paramIndex++;
+    }
+
+    // Company filter (frontend sends the company name string, not an id)
+    if (company) {
+      query += ` AND (comp.company_name ILIKE $${paramIndex} OR o.customer_company_name ILIKE $${paramIndex})`;
+      params.push(company);
       paramIndex++;
     }
 
@@ -140,7 +155,7 @@ export class AdminReportsService {
       paramIndex++;
     }
 
-    query += ' ORDER BY o.date_added DESC';
+    query += ' ORDER BY COALESCE(o.date_added, o.date_modified, o.delivery_date_time) DESC';
     query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(Number(limit), Number(offset));
 
@@ -159,25 +174,25 @@ export class AdminReportsService {
     let countParamIndex = 1;
 
     if (order_date_from) {
-      countQuery += ` AND o.date_added >= $${countParamIndex}::date`;
+      countQuery += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date >= $${countParamIndex}::date`;
       countParams.push(order_date_from);
       countParamIndex++;
     }
 
     if (order_date_to) {
-      countQuery += ` AND o.date_added <= $${countParamIndex}::date`;
+      countQuery += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date <= $${countParamIndex}::date`;
       countParams.push(order_date_to);
       countParamIndex++;
     }
 
     if (delivery_date_from) {
-      countQuery += ` AND o.delivery_date_time >= $${countParamIndex}::date`;
+      countQuery += ` AND o.delivery_date_time::date >= $${countParamIndex}::date`;
       countParams.push(delivery_date_from);
       countParamIndex++;
     }
 
     if (delivery_date_to) {
-      countQuery += ` AND o.delivery_date_time <= $${countParamIndex}::date`;
+      countQuery += ` AND o.delivery_date_time::date <= $${countParamIndex}::date`;
       countParams.push(delivery_date_to);
       countParamIndex++;
     }
@@ -185,6 +200,12 @@ export class AdminReportsService {
     if (location_id) {
       countQuery += ` AND o.location_id = $${countParamIndex}`;
       countParams.push(Number(location_id));
+      countParamIndex++;
+    }
+
+    if (company) {
+      countQuery += ` AND (comp.company_name ILIKE $${countParamIndex} OR o.customer_company_name ILIKE $${countParamIndex})`;
+      countParams.push(company);
       countParamIndex++;
     }
 
@@ -327,6 +348,7 @@ export class AdminReportsService {
     delivery_date_from?: string;
     delivery_date_to?: string;
     location_id?: number;
+    company?: string;
     status?: string;
     search?: string;
   }) {
@@ -336,6 +358,7 @@ export class AdminReportsService {
       delivery_date_from,
       delivery_date_to,
       location_id,
+      company,
       status,
       search
     } = filters;
@@ -343,14 +366,19 @@ export class AdminReportsService {
     let query = `
       SELECT 
         o.order_id,
-        o.date_added as order_date,
+        COALESCE(o.date_added, o.date_modified, o.delivery_date_time) AS order_date,
         o.delivery_date_time,
         o.order_status,
         o.order_total,
         o.delivery_fee,
         COALESCE(cp.coupon_discount, 0) as coupon_discount,
         cp.type as coupon_type,
-        c.firstname || ' ' || c.lastname as customer_name,
+        COALESCE(
+          NULLIF(TRIM(CONCAT_WS(' ', c.firstname, c.lastname)), ''),
+          NULLIF(TRIM(o.customer_order_name), ''),
+          NULLIF(TRIM(CONCAT_WS(' ', o.firstname, o.lastname)), ''),
+          NULLIF(TRIM(o.email), '')
+        ) AS customer_name,
         comp.company_name,
         d.department_name,
         l.location_name,
@@ -369,25 +397,25 @@ export class AdminReportsService {
 
     // Apply same filters as listReports
     if (order_date_from) {
-      query += ` AND o.date_added >= $${paramIndex}::date`;
+      query += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date >= $${paramIndex}::date`;
       params.push(order_date_from);
       paramIndex++;
     }
 
     if (order_date_to) {
-      query += ` AND o.date_added <= $${paramIndex}::date`;
+      query += ` AND COALESCE(o.date_added, o.date_modified, o.delivery_date_time)::date <= $${paramIndex}::date`;
       params.push(order_date_to);
       paramIndex++;
     }
 
     if (delivery_date_from) {
-      query += ` AND o.delivery_date_time >= $${paramIndex}::date`;
+      query += ` AND o.delivery_date_time::date >= $${paramIndex}::date`;
       params.push(delivery_date_from);
       paramIndex++;
     }
 
     if (delivery_date_to) {
-      query += ` AND o.delivery_date_time <= $${paramIndex}::date`;
+      query += ` AND o.delivery_date_time::date <= $${paramIndex}::date`;
       params.push(delivery_date_to);
       paramIndex++;
     }
@@ -395,6 +423,13 @@ export class AdminReportsService {
     if (location_id) {
       query += ` AND o.location_id = $${paramIndex}`;
       params.push(Number(location_id));
+      paramIndex++;
+    }
+
+    // Company filter (frontend sends the company name string, not an id)
+    if (company) {
+      query += ` AND (comp.company_name ILIKE $${paramIndex} OR o.customer_company_name ILIKE $${paramIndex})`;
+      params.push(company);
       paramIndex++;
     }
 
@@ -422,7 +457,7 @@ export class AdminReportsService {
       paramIndex++;
     }
 
-    query += ' ORDER BY o.date_added DESC';
+    query += ' ORDER BY COALESCE(o.date_added, o.date_modified, o.delivery_date_time) DESC';
 
     const result = await this.dataSource.query(query, params);
     

@@ -26,6 +26,7 @@ export class AdminReportsController {
   @ApiQuery({ name: 'delivery_date_from', required: false, type: String })
   @ApiQuery({ name: 'delivery_date_to', required: false, type: String })
   @ApiQuery({ name: 'location_id', required: false, type: Number })
+  @ApiQuery({ name: 'company', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
@@ -36,6 +37,7 @@ export class AdminReportsController {
     @Query('delivery_date_from') deliveryDateFrom?: string,
     @Query('delivery_date_to') deliveryDateTo?: string,
     @Query('location_id') locationId?: string,
+    @Query('company') company?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
@@ -47,6 +49,7 @@ export class AdminReportsController {
       delivery_date_from: deliveryDateFrom,
       delivery_date_to: deliveryDateTo,
       location_id: locationId ? parseInt(locationId) : undefined,
+      company,
       status,
       search,
       limit: limit ? parseInt(limit) : 100,
@@ -61,6 +64,7 @@ export class AdminReportsController {
   @ApiQuery({ name: 'delivery_date_from', required: false, type: String })
   @ApiQuery({ name: 'delivery_date_to', required: false, type: String })
   @ApiQuery({ name: 'location_id', required: false, type: Number })
+  @ApiQuery({ name: 'company', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   async downloadCSV(
@@ -70,6 +74,7 @@ export class AdminReportsController {
     @Query('delivery_date_from') deliveryDateFrom?: string,
     @Query('delivery_date_to') deliveryDateTo?: string,
     @Query('location_id') locationId?: string,
+    @Query('company') company?: string,
     @Query('status') status?: string,
     @Query('search') search?: string,
   ) {
@@ -79,6 +84,7 @@ export class AdminReportsController {
       delivery_date_from: deliveryDateFrom,
       delivery_date_to: deliveryDateTo,
       location_id: locationId ? parseInt(locationId) : undefined,
+      company,
       status,
       search,
     });
