@@ -27,6 +27,42 @@ export class AdminReportsService {
   }
 
   /**
+   * Order status label mirroring the admin Orders list page:
+   * a completed order (is_completed) or packaging status takes precedence,
+   * otherwise the raw order_status is mapped.
+   */
+  private getOrderStatusLabel(row: any): string {
+    if (Number(row.is_completed) === 1) return 'Completed';
+    const pkg = Number(row.packaging_status) || 0;
+    if (pkg === 1) return 'Printed';
+    if (pkg === 2) return 'Packed';
+    if (pkg === 3) return 'Delivered';
+    const map: { [key: number]: string } = {
+      0: 'Cancelled',
+      1: 'Pending',
+      2: 'Pending',
+      3: 'Pending',
+      4: 'Awaiting Approval',
+      5: 'Completed',
+      7: 'Approved',
+      8: 'Rejected',
+    };
+    return map[row.order_status] || 'Pending';
+  }
+
+  /**
+   * Paid / Unpaid mirroring the admin Orders list page logic.
+   */
+  private isRowPaid(row: any): boolean {
+    const ps = row.payment_status;
+    if (ps !== undefined && ps !== null && String(ps) !== '') {
+      const v = String(ps).toLowerCase();
+      return v === '1' || Number(ps) === 1 || v === 'paid' || v === 'true' || v === 'succeeded';
+    }
+    return row.order_status === 2 || row.order_status === 3 || row.order_status === 5;
+  }
+
+  /**
    * Check whether the orders table has a payment_status column
    */
   private async hasPaymentStatusColumn(): Promise<boolean> {
@@ -405,6 +441,9 @@ export class AdminReportsService {
         COALESCE(o.date_added, o.date_modified, o.delivery_date_time) AS order_date,
         o.delivery_date_time,
         o.order_status,
+        COALESCE(o.is_completed::int, 0) as is_completed,
+        COALESCE(o.packaging_status::int, 0) as packaging_status,
+        ${hasPaymentStatus ? 'o.payment_status' : 'NULL'} as payment_status,
         o.order_total,
         o.delivery_fee,
         COALESCE(cp.coupon_discount, 0) as coupon_discount,
@@ -563,7 +602,8 @@ export class AdminReportsService {
         'Company': row.company_name || row.customer_company_name || 'N/A',
         'Department': row.department_name || row.customer_department_name || 'N/A',
         'Location': row.location_name || 'N/A',
-        'Status': this.getStatusName(row.order_status),
+        'Status': this.getOrderStatusLabel(row),
+        'Payment Status': this.isRowPaid(row) ? 'Paid' : 'Unpaid',
         'Subtotal': subtotal.toFixed(2),
         'Delivery Fee': deliveryFee.toFixed(2),
         'Discount': discount.toFixed(2),
@@ -581,6 +621,7 @@ export class AdminReportsService {
       'Department',
       'Location',
       'Status',
+      'Payment Status',
       'Subtotal',
       'Delivery Fee',
       'Discount',
