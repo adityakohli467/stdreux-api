@@ -28,6 +28,7 @@ export class AdminReportsController {
   @ApiQuery({ name: 'location_id', required: false, type: Number })
   @ApiQuery({ name: 'company', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'payment_status', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiQuery({ name: 'offset', required: false, type: Number })
@@ -39,6 +40,7 @@ export class AdminReportsController {
     @Query('location_id') locationId?: string,
     @Query('company') company?: string,
     @Query('status') status?: string,
+    @Query('payment_status') paymentStatus?: string,
     @Query('search') search?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
@@ -51,6 +53,7 @@ export class AdminReportsController {
       location_id: locationId ? parseInt(locationId) : undefined,
       company,
       status,
+      payment_status: paymentStatus,
       search,
       limit: limit ? parseInt(limit) : 100,
       offset: offset ? parseInt(offset) : 0,
@@ -66,6 +69,7 @@ export class AdminReportsController {
   @ApiQuery({ name: 'location_id', required: false, type: Number })
   @ApiQuery({ name: 'company', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
+  @ApiQuery({ name: 'payment_status', required: false, type: String })
   @ApiQuery({ name: 'search', required: false, type: String })
   async downloadCSV(
     @Res() res: Response,
@@ -76,6 +80,7 @@ export class AdminReportsController {
     @Query('location_id') locationId?: string,
     @Query('company') company?: string,
     @Query('status') status?: string,
+    @Query('payment_status') paymentStatus?: string,
     @Query('search') search?: string,
   ) {
     const csv = await this.adminReportsService.downloadCSV({
@@ -86,6 +91,7 @@ export class AdminReportsController {
       location_id: locationId ? parseInt(locationId) : undefined,
       company,
       status,
+      payment_status: paymentStatus,
       search,
     });
 

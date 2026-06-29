@@ -27,6 +27,54 @@ export class AdminReportsService {
   }
 
   /**
+   * Check whether the orders table has a payment_status column
+   */
+  private async hasPaymentStatusColumn(): Promise<boolean> {
+    const rows = await this.dataSource.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name = 'orders' AND column_name = 'payment_status'
+    `);
+    return rows.length > 0;
+  }
+
+  /**
+   * Build the Completed / Not Completed SQL clause.
+   * An order is "completed" when it has been marked complete (is_completed = 1)
+   * or its order_status is Completed (5). Any other value (e.g. 'all' or empty)
+   * applies no completion filter.
+   */
+  private buildCompletionClause(status?: string): string {
+    if (status === 'completed') {
+      return ` AND (COALESCE(o.is_completed::int, 0) = 1 OR o.order_status = 5)`;
+    }
+    if (status === 'not_completed') {
+      return ` AND NOT (COALESCE(o.is_completed::int, 0) = 1 OR o.order_status = 5)`;
+    }
+    return '';
+  }
+
+  /**
+   * Build the Paid / Unpaid SQL clause. An order is "paid" when order_status is
+   * Paid (2) or payment_status is paid/succeeded. Any other value applies no filter.
+   */
+  private buildPaymentClause(
+    payment_status: string | undefined,
+    hasPaymentStatus: boolean,
+  ): string {
+    const paidExpr = hasPaymentStatus
+      ? `(o.order_status = 2 OR o.payment_status IN ('paid', 'succeeded'))`
+      : `(o.order_status = 2)`;
+    if (payment_status === 'paid') {
+      return ` AND ${paidExpr}`;
+    }
+    if (payment_status === 'unpaid') {
+      return ` AND NOT ${paidExpr}`;
+    }
+    return '';
+  }
+
+  /**
    * List reports with filters
    */
   async listReports(filters: {
@@ -37,6 +85,7 @@ export class AdminReportsService {
     location_id?: number;
     company?: string;
     status?: string;
+    payment_status?: string;
     search?: string;
     limit?: number;
     offset?: number;
@@ -49,10 +98,13 @@ export class AdminReportsService {
       location_id,
       company,
       status,
+      payment_status,
       search,
       limit = 100,
       offset = 0
     } = filters;
+
+    const hasPaymentStatus = await this.hasPaymentStatusColumn();
 
     let query = `
       SELECT 
@@ -127,20 +179,11 @@ export class AdminReportsService {
       paramIndex++;
     }
 
-    // Status filter - handle special statuses
-    if (status) {
-      if (status === '90') {
-        // All minus paid
-        query += ` AND o.order_status != 2`;
-      } else if (status === '91') {
-        // All minus cancelled
-        query += ` AND o.order_status != 0`;
-      } else {
-        query += ` AND o.order_status = $${paramIndex}`;
-        params.push(Number(status));
-        paramIndex++;
-      }
-    }
+    // Status filter - Completed / Not Completed (anything else = all)
+    query += this.buildCompletionClause(status);
+
+    // Payment status filter - Paid / Unpaid (anything else = all)
+    query += this.buildPaymentClause(payment_status, hasPaymentStatus);
 
     // Search filter
     if (search) {
@@ -209,17 +252,8 @@ export class AdminReportsService {
       countParamIndex++;
     }
 
-    if (status) {
-      if (status === '90') {
-        countQuery += ` AND o.order_status != 2`;
-      } else if (status === '91') {
-        countQuery += ` AND o.order_status != 0`;
-      } else {
-        countQuery += ` AND o.order_status = $${countParamIndex}`;
-        countParams.push(Number(status));
-        countParamIndex++;
-      }
-    }
+    countQuery += this.buildCompletionClause(status);
+    countQuery += this.buildPaymentClause(payment_status, hasPaymentStatus);
 
     if (search) {
       countQuery += ` AND (
@@ -277,18 +311,13 @@ export class AdminReportsService {
 
     // Calculate totals for summary
     const reports = result.map((row: any) => {
-      // Calculate subtotal from products
+      // Calculate subtotal from products. order_product.total already includes
+      // the line's option prices, so options must NOT be added again here
+      // (doing so previously double-counted the option amounts).
       let subtotal = 0;
       if (orderProductsMap[row.order_id]) {
         orderProductsMap[row.order_id].forEach((product: any) => {
           subtotal += parseFloat(product.product_total || 0);
-        });
-      }
-      
-      // Add options to subtotal
-      if (orderOptionsMap[row.order_id]) {
-        orderOptionsMap[row.order_id].forEach((option: any) => {
-          subtotal += parseFloat(option.option_price || 0) * parseFloat(option.option_quantity || 0);
         });
       }
 
@@ -350,6 +379,7 @@ export class AdminReportsService {
     location_id?: number;
     company?: string;
     status?: string;
+    payment_status?: string;
     search?: string;
   }) {
     const {
@@ -360,8 +390,11 @@ export class AdminReportsService {
       location_id,
       company,
       status,
+      payment_status,
       search
     } = filters;
+
+    const hasPaymentStatus = await this.hasPaymentStatusColumn();
 
     let query = `
       SELECT 
@@ -433,17 +466,8 @@ export class AdminReportsService {
       paramIndex++;
     }
 
-    if (status) {
-      if (status === '90') {
-        query += ` AND o.order_status != 2`;
-      } else if (status === '91') {
-        query += ` AND o.order_status != 0`;
-      } else {
-        query += ` AND o.order_status = $${paramIndex}`;
-        params.push(Number(status));
-        paramIndex++;
-      }
-    }
+    query += this.buildCompletionClause(status);
+    query += this.buildPaymentClause(payment_status, hasPaymentStatus);
 
     if (search) {
       query += ` AND (
@@ -500,18 +524,13 @@ export class AdminReportsService {
     }
     
     const csvData = result.map((row: any) => {
-      // Calculate subtotal from products
+      // Calculate subtotal from products. order_product.total already includes
+      // the line's option prices, so options must NOT be added again here
+      // (doing so previously double-counted the option amounts).
       let subtotal = 0;
       if (orderProductsMap[row.order_id]) {
         orderProductsMap[row.order_id].forEach((product: any) => {
           subtotal += parseFloat(product.product_total || 0);
-        });
-      }
-      
-      // Add options to subtotal
-      if (orderOptionsMap[row.order_id]) {
-        orderOptionsMap[row.order_id].forEach((option: any) => {
-          subtotal += parseFloat(option.option_price || 0) * parseFloat(option.option_quantity || 0);
         });
       }
 
