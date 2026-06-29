@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Body,
+  Request,
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
@@ -18,8 +19,10 @@ export class StoreCouponsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get list of available coupons' })
-  async getAvailableCoupons() {
-    return this.storeCouponsService.getAvailableCoupons();
+  async getAvailableCoupons(@Request() req: any) {
+    return this.storeCouponsService.getAvailableCoupons(
+      req.headers.authorization,
+    );
   }
 
   @Post('validate')
@@ -29,7 +32,11 @@ export class StoreCouponsController {
       coupon_code: string;
       order_total?: number;
     },
+    @Request() req: any,
   ) {
-    return this.storeCouponsService.validateCoupon(data);
+    return this.storeCouponsService.validateCoupon(
+      data,
+      req.headers.authorization,
+    );
   }
 }

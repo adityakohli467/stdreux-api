@@ -1,10 +1,11 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { Cron } from '@nestjs/schedule';
 import { FileStorageService } from '../../common/services/file-storage.service';
 import { PricingService } from '../../common/services/pricing.service';
 
 @Injectable()
-export class AdminProductsService {
+export class AdminProductsService implements OnModuleInit {
   private readonly logger = new Logger(AdminProductsService.name);
 
   constructor(
@@ -12,6 +13,46 @@ export class AdminProductsService {
     private fileStorageService: FileStorageService,
     private pricingService: PricingService,
   ) { }
+
+  async onModuleInit() {
+    // Ensure priority access columns exist so storefront visibility filtering
+    // and the daily expiry cron work even before any product is created/edited.
+    try {
+      await this.dataSource.query(`ALTER TABLE product ADD COLUMN IF NOT EXISTS priority_access boolean DEFAULT false`);
+      await this.dataSource.query(`ALTER TABLE product ADD COLUMN IF NOT EXISTS priority_access_expiry date`);
+      this.logger.log('Ensured priority_access columns exist on product table');
+    } catch (error) {
+      this.logger.error('Failed to ensure priority_access columns:', error);
+    }
+  }
+
+  /**
+   * Daily cron that releases priority-access products to all customers once their
+   * expiry date has passed. Before expiry, only VIP customers can see these products
+   * (enforced in store-products.service). On/after the expiry date this flips
+   * priority_access to false so the product becomes visible to everyone.
+   * Runs in-process via @nestjs/schedule on the Railway API service.
+   */
+  @Cron('0 1 * * *', { name: 'priority-access-expiry' })
+  async expirePriorityAccess(): Promise<void> {
+    try {
+      const result = await this.dataSource.query(`
+        UPDATE product
+        SET priority_access = false,
+            product_date_modified = CURRENT_TIMESTAMP
+        WHERE priority_access = true
+          AND priority_access_expiry IS NOT NULL
+          AND priority_access_expiry <= CURRENT_DATE
+        RETURNING product_id
+      `);
+
+      if (result && result.length > 0) {
+        this.logger.log(`[Priority Access] Released ${result.length} product(s) to all customers (expiry reached): ${result.map((r: any) => r.product_id).join(', ')}`);
+      }
+    } catch (error: any) {
+      this.logger.error(`[Priority Access] Failed to expire priority access products: ${error?.message}`);
+    }
+  }
 
   private async ensureProductColumnsExist(queryRunner: any) {
     // 1. Get all columns and their types
@@ -60,7 +101,9 @@ export class AdminProductsService {
       { name: 'premium_discount_percentage', sql: `ALTER TABLE product ADD COLUMN premium_discount_percentage decimal(5,2)` },
       { name: 'product_price_premium', sql: `ALTER TABLE product ADD COLUMN product_price_premium decimal(10,2)` },
       { name: 'premium_price_discounted', sql: `ALTER TABLE product ADD COLUMN premium_price_discounted decimal(10,2)` },
-      { name: 'subscriber_rate', sql: `ALTER TABLE product ADD COLUMN subscriber_rate decimal(10,2)` }
+      { name: 'subscriber_rate', sql: `ALTER TABLE product ADD COLUMN subscriber_rate decimal(10,2)` },
+      { name: 'priority_access', sql: `ALTER TABLE product ADD COLUMN priority_access boolean DEFAULT false` },
+      { name: 'priority_access_expiry', sql: `ALTER TABLE product ADD COLUMN priority_access_expiry date` }
     ];
     for (const field of otherFields) {
       if (!columnMap.has(field.name)) {
@@ -544,6 +587,8 @@ export class AdminProductsService {
       add_to_subscription?: boolean;
       featured_1?: boolean;
       featured_2?: boolean;
+      priority_access?: boolean;
+      priority_access_expiry?: string | null;
       premium_discount_percentage?: number;
       product_price_premium?: number;
       premium_price_discounted?: number;
@@ -710,6 +755,8 @@ export class AdminProductsService {
         'add_to_subscription',
         'featured_1',
         'featured_2',
+        'priority_access',
+        'priority_access_expiry',
         'premium_discount_percentage',
         'product_price_premium',
         'premium_price_discounted',
@@ -742,6 +789,8 @@ export class AdminProductsService {
         add_to_subscription || false,
         featured_1 || false,
         featured_2 || false,
+        [true, 'true', 1, '1'].includes(productData.priority_access as any),
+        productData.priority_access_expiry ? productData.priority_access_expiry : null,
         premium_discount_percentage !== undefined ? premium_discount_percentage : null,
         product_price_premium !== undefined ? product_price_premium : null,
         premium_price_discounted !== undefined ? premium_price_discounted : null,
@@ -886,6 +935,8 @@ export class AdminProductsService {
       add_to_subscription?: boolean;
       featured_1?: boolean;
       featured_2?: boolean;
+      priority_access?: boolean;
+      priority_access_expiry?: string | null;
       premium_discount_percentage?: number;
       product_price_premium?: number;
       premium_price_discounted?: number;
@@ -1096,6 +1147,17 @@ export class AdminProductsService {
       if (featured_2 !== undefined) {
         updateFields.push(`featured_2 = $${paramIndex++}`);
         updateParams.push(featured_2);
+      }
+      if (productData.priority_access !== undefined) {
+        const priorityVal = [true, 'true', 1, '1'].includes(
+          productData.priority_access as any,
+        );
+        updateFields.push(`priority_access = $${paramIndex++}`);
+        updateParams.push(priorityVal);
+      }
+      if (productData.priority_access_expiry !== undefined) {
+        updateFields.push(`priority_access_expiry = $${paramIndex++}`);
+        updateParams.push(productData.priority_access_expiry ? productData.priority_access_expiry : null);
       }
       if (premium_discount_percentage !== undefined) {
         updateFields.push(`premium_discount_percentage = $${paramIndex++}`);

@@ -105,6 +105,12 @@ export class Product {
   @Column({ type: "boolean", default: false })
   featured_2!: boolean
 
+  @Column({ type: "boolean", default: false })
+  priority_access!: boolean
+
+  @Column({ type: "date", nullable: true })
+  priority_access_expiry!: Date
+
   @CreateDateColumn({ name: "product_date_added" })
   product_date_added!: Date
 

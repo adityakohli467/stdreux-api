@@ -1,11 +1,50 @@
-import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  NotFoundException,
+  BadRequestException,
+  OnModuleInit,
+} from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
 @Injectable()
-export class AdminCouponsService {
+export class AdminCouponsService implements OnModuleInit {
   private readonly logger = new Logger(AdminCouponsService.name);
 
   constructor(private dataSource: DataSource) {}
+
+  async onModuleInit() {
+    try {
+      await this.dataSource.query(
+        `ALTER TABLE coupon ADD COLUMN IF NOT EXISTS customer_types varchar(100)`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to ensure coupon.customer_types column', error);
+    }
+  }
+
+  /**
+   * Normalize the incoming customer_types value (array or comma string) into a
+   * comma-separated lowercase string limited to the allowed types. Returns null
+   * when no valid type is selected, which means the coupon applies to everyone.
+   */
+  private normalizeCustomerTypes(input: any): string | null {
+    if (input === undefined || input === null) return null;
+    let arr: any[] = [];
+    if (Array.isArray(input)) {
+      arr = input;
+    } else if (typeof input === 'string') {
+      arr = input.split(',');
+    } else {
+      return null;
+    }
+    const allowed = ['retail', 'vip', 'wholesale'];
+    const cleaned = arr
+      .map((s) => String(s).trim().toLowerCase())
+      .filter((s) => allowed.includes(s));
+    const unique = Array.from(new Set(cleaned));
+    return unique.length > 0 ? unique.join(',') : null;
+  }
 
   async findAll(query: any): Promise<any> {
     const { status } = query;
@@ -53,7 +92,7 @@ export class AdminCouponsService {
       throw new BadRequestException('Invalid request body');
     }
 
-    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront } = createCouponDto;
+    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types } = createCouponDto;
 
     if (!coupon_code || (typeof coupon_code === 'string' && !coupon_code.trim())) {
       throw new BadRequestException('Coupon code is required');
@@ -61,10 +100,10 @@ export class AdminCouponsService {
 
     try {
       const result = await this.dataSource.query(
-        `INSERT INTO coupon (coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront)
-         VALUES ($1, $2, $3, $4, $5, $6)
+        `INSERT INTO coupon (coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          RETURNING *`,
-        [coupon_code, coupon_description, coupon_discount, type || 'F', status !== undefined ? status : 1, show_on_storefront || false],
+        [coupon_code, coupon_description, coupon_discount, type || 'F', status !== undefined ? status : 1, show_on_storefront || false, this.normalizeCustomerTypes(customer_types)],
       );
 
       return { coupon: result[0], message: 'Coupon created successfully' };
@@ -77,7 +116,7 @@ export class AdminCouponsService {
   }
 
   async update(id: number, updateCouponDto: any): Promise<any> {
-    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront } = updateCouponDto;
+    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types } = updateCouponDto;
 
     const result = await this.dataSource.query(
       `UPDATE coupon SET
@@ -86,10 +125,11 @@ export class AdminCouponsService {
         coupon_discount = $3,
         type = $4,
         status = $5,
-        show_on_storefront = $6
-      WHERE coupon_id = $7
+        show_on_storefront = $6,
+        customer_types = $7
+      WHERE coupon_id = $8
       RETURNING *`,
-      [coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, id],
+      [coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, this.normalizeCustomerTypes(customer_types), id],
     );
 
     if (result.length === 0) {

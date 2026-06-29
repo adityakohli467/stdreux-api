@@ -35,6 +35,11 @@ export class Coupon {
   @Column({ type: "boolean", default: false })
   show_on_storefront!: boolean
 
+  // Comma-separated list of eligible customer types (retail, vip, wholesale).
+  // NULL/empty means the coupon is available to all customers.
+  @Column({ type: "varchar", length: 100, nullable: true })
+  customer_types!: string | null
+
   @CreateDateColumn({ name: "date_added" })
   date_added!: Date
 

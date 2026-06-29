@@ -338,14 +338,48 @@ export class StoreOrdersService {
         const coupon = couponResult[0];
 
         if (coupon) {
-          couponId = coupon.coupon_id;
-          // Apply coupon discount after wholesale discount
-          if (coupon.type === 'P') {
-            couponDiscount = afterWholesaleDiscount * (parseFloat(coupon.coupon_discount) / 100);
-          } else if (coupon.type === 'F') {
-            couponDiscount = parseFloat(coupon.coupon_discount);
+          // Enforce customer-type eligibility for restricted coupons so the
+          // storefront validation cannot be bypassed by submitting directly.
+          let couponEligible = true;
+          if (coupon.customer_types) {
+            const allowed = String(coupon.customer_types)
+              .split(',')
+              .map((s) => s.trim().toLowerCase())
+              .filter(Boolean);
+            if (allowed.length > 0) {
+              const ct = (customer.customer_type || '').toString().toLowerCase();
+              const customerTypes: string[] = [];
+              let isVipCust = false;
+              try {
+                const vipRes = await queryRunner.query(
+                  `SELECT COALESCE(vip, false) AS vip FROM customer WHERE customer_id = $1`,
+                  [customer.customer_id],
+                );
+                isVipCust = vipRes.length > 0 && vipRes[0].vip === true;
+              } catch {
+                // vip column may not exist yet
+              }
+              if (isVipCust) customerTypes.push('vip');
+              const wholesale =
+                isWholesale ||
+                ct.includes('wholesale') ||
+                ct.startsWith('full service') ||
+                ct.startsWith('partial service');
+              customerTypes.push(wholesale ? 'wholesale' : 'retail');
+              couponEligible = customerTypes.some((t) => allowed.includes(t));
+            }
           }
-          couponDiscount = Math.min(couponDiscount, afterWholesaleDiscount);
+
+          if (couponEligible) {
+            couponId = coupon.coupon_id;
+            // Apply coupon discount after wholesale discount
+            if (coupon.type === 'P') {
+              couponDiscount = afterWholesaleDiscount * (parseFloat(coupon.coupon_discount) / 100);
+            } else if (coupon.type === 'F') {
+              couponDiscount = parseFloat(coupon.coupon_discount);
+            }
+            couponDiscount = Math.min(couponDiscount, afterWholesaleDiscount);
+          }
         }
       }
 

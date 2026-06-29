@@ -29,6 +29,16 @@ export class AdminCustomersService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to add pay_later column:', error);
     }
+
+    try {
+      await this.dataSource.query(`
+        ALTER TABLE customer 
+        ADD COLUMN IF NOT EXISTS vip BOOLEAN DEFAULT false
+      `);
+      this.logger.log('Ensured vip column exists in customer table');
+    } catch (error) {
+      this.logger.error('Failed to add vip column:', error);
+    }
   }
 
   async findAll(query: any): Promise<any> {
@@ -239,6 +249,7 @@ export class AdminCustomersService implements OnModuleInit {
       archived,
       discount_percentage,
       pay_later,
+      vip,
     } = createCustomerDto;
 
     if (!firstname || !firstname.trim()) {
@@ -262,10 +273,11 @@ export class AdminCustomersService implements OnModuleInit {
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'customer' 
-      AND column_name IN ('created_from', 'pay_later')
+      AND column_name IN ('created_from', 'pay_later', 'vip')
     `);
     const hasCreatedFrom = createdFromCheck.some((row: any) => row.column_name === 'created_from');
     const hasPayLaterCol = createdFromCheck.some((row: any) => row.column_name === 'pay_later');
+    const hasVipCol = createdFromCheck.some((row: any) => row.column_name === 'vip');
 
     // Build dynamic query parts
     const columns: string[] = [
@@ -315,6 +327,12 @@ export class AdminCustomersService implements OnModuleInit {
       paramIndex++;
     }
 
+    if (hasVipCol) {
+      columns.push('vip');
+      values.push(vip === true || vip === 'true');
+      paramIndex++;
+    }
+
     // Build placeholders
     for (let i = 1; i <= values.length; i++) {
       placeholders.push(`$${i}`);
@@ -345,7 +363,7 @@ export class AdminCustomersService implements OnModuleInit {
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'customer' 
-      AND column_name IN ('customer_type', 'customer_notes', 'customer_cost_centre', 'department_id', 'estimated_opening_date', 'archived', 'discount_percentage', 'wholesale_discount_percentage', 'pay_later', 'wholesale_type', 'service_type')
+      AND column_name IN ('customer_type', 'customer_notes', 'customer_cost_centre', 'department_id', 'estimated_opening_date', 'archived', 'discount_percentage', 'wholesale_discount_percentage', 'pay_later', 'wholesale_type', 'service_type', 'vip')
     `);
     const existingColumns = columnCheck.map((row: any) => row.column_name);
     const hasCustomerType = existingColumns.includes('customer_type');
@@ -359,6 +377,7 @@ export class AdminCustomersService implements OnModuleInit {
     const hasPayLaterCol = existingColumns.includes('pay_later');
     const hasWholesaleType = existingColumns.includes('wholesale_type');
     const hasServiceType = existingColumns.includes('service_type');
+    const hasVipCol = existingColumns.includes('vip');
 
     // Validate required fields if they're being updated
     if (updateCustomerDto.firstname !== undefined && (!updateCustomerDto.firstname || !updateCustomerDto.firstname.trim())) {
@@ -429,6 +448,11 @@ export class AdminCustomersService implements OnModuleInit {
     if (hasPayLaterCol && updateCustomerDto.pay_later !== undefined) {
       updates.push(`pay_later = $${paramIndex++}`);
       values.push(updateCustomerDto.pay_later === true || updateCustomerDto.pay_later === 'true');
+    }
+
+    if (hasVipCol && updateCustomerDto.vip !== undefined) {
+      updates.push(`vip = $${paramIndex++}`);
+      values.push(updateCustomerDto.vip === true || updateCustomerDto.vip === 'true');
     }
 
     if (hasDiscountPercentage && updateCustomerDto.discount_percentage !== undefined) {

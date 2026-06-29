@@ -78,6 +78,53 @@ export class StoreProductsService {
   }
 
   /**
+   * Check whether the customer linked to the given userId is a VIP.
+   * VIP customers can see priority-access products before their expiry date.
+   */
+  private async isVipCustomer(userId: number | null): Promise<boolean> {
+    if (!userId) return false;
+    try {
+      const colCheck = await this.dataSource.query(`
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'customer' AND column_name = 'vip' LIMIT 1
+      `);
+      if (colCheck.length === 0) return false;
+      const result = await this.dataSource.query(
+        `SELECT COALESCE(vip, false) AS vip FROM customer WHERE user_id = $1`,
+        [userId],
+      );
+      return result.length > 0 && result[0].vip === true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Build a SQL fragment (prefixed with " AND ...") that hides priority-access
+   * products from non-VIP customers (and guests) until their expiry date passes.
+   * Returns '' for VIP customers (who see everything) or when the priority_access
+   * column does not exist yet.
+   * Use the same alias `p` for the product table in the target query.
+   */
+  private async getPriorityAccessFilter(isVip: boolean): Promise<string> {
+    if (isVip) return '';
+    const colCheck = await this.dataSource.query(`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'product' AND column_name IN ('priority_access', 'priority_access_expiry')
+    `);
+    const hasPriority = colCheck.some((r: any) => r.column_name === 'priority_access');
+    const hasExpiry = colCheck.some((r: any) => r.column_name === 'priority_access_expiry');
+    if (!hasPriority) return '';
+    // A product is restricted (VIP-only) while priority_access is on AND the expiry
+    // is still in the future (or not set). Once the expiry date is reached, the
+    // daily cron flips the flag and the product becomes visible to everyone.
+    const stillRestricted = hasExpiry
+      ? `(p.priority_access_expiry IS NULL OR p.priority_access_expiry > CURRENT_DATE)`
+      : `true`;
+    return ` AND NOT (COALESCE(p.priority_access, false) = true AND ${stillRestricted})`;
+  }
+
+  /**
    * List products for storefront with filters
    */
   async listProducts(
@@ -130,6 +177,11 @@ export class StoreProductsService {
       customerType.toLowerCase().startsWith('full service') ||
       customerType.toLowerCase().startsWith('partial service')
     ) : false;
+
+    // Priority-access visibility: VIP customers see everything, others have
+    // priority-access products hidden until their expiry date passes.
+    const isVip = await this.isVipCustomer(userId);
+    const priorityAccessFilter = await this.getPriorityAccessFilter(isVip);
 
     // Check if user_price column exists to avoid DB errors on environments without migrations
     const userPriceColumnCheck = await this.dataSource.query(`
@@ -259,6 +311,9 @@ export class StoreProductsService {
       query += ` AND LOWER(COALESCE(p.customer_type_visibility, 'all')) = 'all'`;
     }
 
+    // Hide priority-access products from non-VIP customers until expiry
+    query += priorityAccessFilter;
+
     if (search) {
       params.push(`%${search}%`);
       query += ` AND (p.product_name ILIKE $${paramIndex} OR p.product_description ILIKE $${paramIndex})`;
@@ -378,6 +433,9 @@ export class StoreProductsService {
     } else {
       countQuery += ` AND LOWER(COALESCE(p.customer_type_visibility, 'all')) = 'all'`;
     }
+
+    // Hide priority-access products from non-VIP customers until expiry
+    countQuery += priorityAccessFilter;
 
     const countResult = await this.dataSource.query(countQuery, countParams);
     const total = parseInt(countResult[0].total);
@@ -583,6 +641,10 @@ export class StoreProductsService {
     } else {
       productQuery += ` AND COALESCE(p.customer_type_visibility, 'all') = 'all'`;
     }
+
+    // Hide priority-access products from non-VIP customers until expiry
+    const isVip = await this.isVipCustomer(userId);
+    productQuery += await this.getPriorityAccessFilter(isVip);
 
     const productResult = await this.dataSource.query(productQuery, [id]);
     const product = productResult[0];
@@ -1001,6 +1063,9 @@ export class StoreProductsService {
       query += ` AND COALESCE(p.customer_type_visibility, 'all') = 'all'`;
     }
 
+    // Hide priority-access products from non-VIP customers until expiry
+    query += await this.getPriorityAccessFilter(await this.isVipCustomer(userId));
+
     // Check if featured_1 and featured_2 columns exist
     const featuredCheck = await this.dataSource.query(`
       SELECT column_name 
@@ -1320,6 +1385,9 @@ export class StoreProductsService {
     } else {
       query += ` AND COALESCE(p.customer_type_visibility, 'all') = 'all'`;
     }
+
+    // Hide priority-access products from non-VIP customers until expiry
+    query += await this.getPriorityAccessFilter(await this.isVipCustomer(userId));
 
     query += `
       GROUP BY p.product_id, p.product_name, p.product_description, p.product_price, 

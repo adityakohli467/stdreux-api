@@ -61,6 +61,9 @@ export class Customer {
   @Column({ type: "boolean", default: false })
   pay_later!: boolean
 
+  @Column({ type: "boolean", default: false })
+  vip!: boolean
+
   @Column({ type: "int", nullable: true })
   company_id!: number
 
