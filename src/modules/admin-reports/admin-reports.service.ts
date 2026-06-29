@@ -378,12 +378,15 @@ export class AdminReportsService {
         discount = Math.min(discount, subtotal);
       }
       
-      // Calculate GST on amount after discount
+      // Use the stored order_total from the DB. It already includes GST applied
+      // per the GST rules at order time (GST-inclusive for retail, GST added on
+      // top for wholesale), exactly like the admin Orders list page. Recalculating
+      // here produced the wrong total, so we trust the stored value.
       const afterDiscount = subtotal - discount;
-      const gst = afterDiscount / 10; // GST = amount/10
-      
-      // Total = subtotal - discount + GST + delivery fee
-      const total = afterDiscount + gst + deliveryFee;
+      const total = parseFloat(row.order_total || 0);
+      // GST is the portion the stored total adds on top of the ex-GST breakdown
+      // (the added-on-top amount for wholesale; ~0 for GST-inclusive retail).
+      const gst = Math.max(0, total - (afterDiscount + deliveryFee));
 
       return {
         ...row,
@@ -590,9 +593,11 @@ export class AdminReportsService {
         }
         discount = Math.min(discount, subtotal);
       }
+      // Use the stored order_total (GST already applied per the GST rules at order
+      // time), matching the admin Orders list page instead of recalculating.
       const afterDiscount = subtotal - discount;
-      const gst = afterDiscount / 10; // GST = amount/10
-      const total = afterDiscount + gst + deliveryFee;
+      const total = parseFloat(row.order_total || 0);
+      const gst = Math.max(0, total - (afterDiscount + deliveryFee));
 
       return {
         'Order ID': row.order_id,
