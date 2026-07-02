@@ -620,7 +620,7 @@ export class StoreAuthService implements OnModuleInit {
       <p style="margin:0 0 20px;line-height:1.6;color:#666;"><em>Please note: This code is valid for one-time use only.</em></p>
 
       <div style="text-align:center;margin:0 0 24px;">
-        <a href="${shopUrl}" style="display:inline-block;padding:14px 40px;background-color:#E07856;color:#ffffff !important;text-decoration:none;border-radius:6px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;font-size:14px;">Shop Now</a>
+        <a href="${shopUrl}" style="display:inline-block;padding:14px 40px;background-color:#105a9c;color:#ffffff !important;text-decoration:none;border-radius:6px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;font-size:14px;">Shop Now</a>
       </div>
 
       <p style="margin:0;line-height:1.5;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:16px;">
