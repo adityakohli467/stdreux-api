@@ -370,15 +370,84 @@ export class StoreOrdersService {
             }
           }
 
+          // Enforce expiry date (date-only comparison).
+          if (couponEligible && coupon.expiry_date) {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const expiry = new Date(coupon.expiry_date);
+            expiry.setHours(0, 0, 0, 0);
+            if (expiry < today) couponEligible = false;
+          }
+
+          // Enforce one-time redemption per customer (recurrence = 'once').
+          if (
+            couponEligible &&
+            String(coupon.recurrence || '').trim().toLowerCase() === 'once'
+          ) {
+            const usedRes = await queryRunner.query(
+              `SELECT 1 FROM orders WHERE coupon_id = $1 AND customer_id = $2 LIMIT 1`,
+              [coupon.coupon_id, customer.customer_id],
+            );
+            if (usedRes.length > 0) couponEligible = false;
+          }
+
+          // Determine the subtotal the discount applies to. Category-restricted
+          // coupons only discount eligible-category items in the order.
+          let applicableSubtotal = afterWholesaleDiscount;
+          if (couponEligible && coupon.categories) {
+            const allowedCategoryIds = String(coupon.categories)
+              .split(',')
+              .map((s) => parseInt(s.trim(), 10))
+              .filter((n) => !isNaN(n));
+            if (allowedCategoryIds.length > 0) {
+              const productIds = Array.from(
+                new Set(
+                  orderItems
+                    .map((it) => Number(it.product_id))
+                    .filter((n) => !isNaN(n)),
+                ),
+              );
+              let eligibleSubtotal = 0;
+              if (productIds.length > 0) {
+                const eligRows = await queryRunner.query(
+                  `SELECT DISTINCT pc.product_id
+                     FROM product_category pc
+                    WHERE pc.category_id = ANY($1::int[])
+                      AND pc.product_id = ANY($2::int[])
+                   UNION
+                   SELECT DISTINCT p.product_id
+                     FROM product p
+                    WHERE p.subcategory_id = ANY($1::int[])
+                      AND p.product_id = ANY($2::int[])`,
+                  [allowedCategoryIds, productIds],
+                );
+                const eligibleSet = new Set(
+                  eligRows.map((r: any) => Number(r.product_id)),
+                );
+                for (const it of orderItems) {
+                  if (eligibleSet.has(Number(it.product_id))) {
+                    eligibleSubtotal += Number(it.total) || 0;
+                  }
+                }
+              }
+              applicableSubtotal = Math.min(
+                eligibleSubtotal,
+                afterWholesaleDiscount,
+              );
+              if (applicableSubtotal <= 0) couponEligible = false;
+            }
+          }
+
           if (couponEligible) {
             couponId = coupon.coupon_id;
-            // Apply coupon discount after wholesale discount
+            // Apply coupon discount to the applicable subtotal
             if (coupon.type === 'P') {
-              couponDiscount = afterWholesaleDiscount * (parseFloat(coupon.coupon_discount) / 100);
+              couponDiscount =
+                applicableSubtotal * (parseFloat(coupon.coupon_discount) / 100);
             } else if (coupon.type === 'F') {
               couponDiscount = parseFloat(coupon.coupon_discount);
             }
-            couponDiscount = Math.min(couponDiscount, afterWholesaleDiscount);
+            couponDiscount = Math.min(couponDiscount, applicableSubtotal);
           }
         }
       }

@@ -31,6 +31,12 @@ export class StoreCouponsController {
     @Body() data: {
       coupon_code: string;
       order_total?: number;
+      items?: Array<{
+        product_id: number;
+        quantity?: number;
+        price?: number;
+        total?: number;
+      }>;
     },
     @Request() req: any,
   ) {
