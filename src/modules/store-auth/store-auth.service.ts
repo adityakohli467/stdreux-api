@@ -177,6 +177,8 @@ export class StoreAuthService implements OnModuleInit {
     preferred_contact_method?: string;
     business_type?: string;
     wholesale_type?: string;
+    vip?: boolean;
+    customer_type?: string;
   }): Promise<any> {
     const {
       email,
@@ -198,6 +200,8 @@ export class StoreAuthService implements OnModuleInit {
       preferred_contact_method,
       business_type,
       wholesale_type,
+      vip,
+      customer_type,
     } = registerDto;
 
     if (!email || !username || !password || !firstname) {
@@ -291,7 +295,7 @@ export class StoreAuthService implements OnModuleInit {
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'customer' 
-      AND column_name IN ('service_type', 'estimated_opening_date', 'preferred_contact_method', 'business_type', 'wholesale_type', 'customer_type')
+      AND column_name IN ('service_type', 'estimated_opening_date', 'preferred_contact_method', 'business_type', 'wholesale_type', 'customer_type', 'vip')
     `);
     const existingColumns = columnCheck.map((row: any) => row.column_name);
     const hasServiceType = existingColumns.includes('service_type');
@@ -300,6 +304,7 @@ export class StoreAuthService implements OnModuleInit {
     const hasBusinessType = existingColumns.includes('business_type');
     const hasWholesaleType = existingColumns.includes('wholesale_type');
     const hasCustomerType = existingColumns.includes('customer_type');
+    const hasVip = existingColumns.includes('vip');
 
     // Build columns and values arrays
     const columns = [
@@ -362,6 +367,16 @@ export class StoreAuthService implements OnModuleInit {
       }
       columns.push('customer_type');
       values.push(customerTypeValue);
+    } else if (hasCustomerType && !company_name) {
+      // Retail (storefront / VIP landing page) registrations are saved as Retail
+      columns.push('customer_type');
+      values.push(customer_type || 'Retail');
+    }
+
+    // VIP registrations (e.g. from the VIP landing page) are auto-marked as VIP customers
+    if (hasVip && vip) {
+      columns.push('vip');
+      values.push(true);
     }
 
     // Build placeholders - NOW() for customer_date_added, $N for others

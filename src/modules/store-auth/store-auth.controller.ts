@@ -64,6 +64,8 @@ export class StoreAuthController {
         preferred_contact_method: { type: 'string' },
         business_type: { type: 'string' },
         wholesale_type: { type: 'string' },
+        vip: { type: 'boolean' },
+        customer_type: { type: 'string' },
       },
       required: ['email', 'username', 'password', 'firstname'],
     },
