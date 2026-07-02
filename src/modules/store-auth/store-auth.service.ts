@@ -579,6 +579,92 @@ export class StoreAuthService implements OnModuleInit {
 </html>`,
           });
         }
+      } else if (vip) {
+        // VIP landing-page registration – send branded VIP welcome email with the VIP30 code
+        const shopUrl = `${frontendUrl}/shop`;
+        await this.notificationService.sendNotification({
+          templateKey: 'vip_registration',
+          recipientEmail: email,
+          recipientName: customerName,
+          variables: {},
+          customSubject: 'Welcome to St. Dreux VIP',
+          customBody: `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0;padding:0;background-color:#f4f4f4;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;color:#333;">
+  <div style="max-width:600px;margin:0 auto;background-color:#ffffff;">
+    <div style="background-color:#0d1a44;padding:32px 24px;text-align:center;">
+      <h1 style="margin:0;color:#ffffff;font-size:24px;letter-spacing:1px;">${companyNameVar}</h1>
+      <p style="margin:8px 0 0;color:#E07856;font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:bold;">VIP Community</p>
+    </div>
+    <div style="padding:28px 28px 8px;">
+      <h2 style="margin:0 0 16px;color:#0d1a44;font-size:20px;">Welcome to St. Dreux VIP</h2>
+      <p style="margin:0 0 14px;line-height:1.6;">Hi ${firstname},</p>
+      <p style="margin:0 0 14px;line-height:1.6;">Thank you for joining the St. Dreux VIP Community.</p>
+      <p style="margin:0 0 14px;line-height:1.6;">We're excited to have you with us. As a VIP member, you'll enjoy exclusive offers, priority access to new coffee releases, member-only promotions, and a first look at our latest coffees throughout the year.</p>
+
+      <h3 style="margin:24px 0 10px;color:#0d1a44;font-size:16px;">Your Welcome Reward</h3>
+      <p style="margin:0 0 16px;line-height:1.6;">As a thank you for joining, here's your exclusive one-time discount code:</p>
+
+      <div style="text-align:center;margin:0 0 16px;">
+        <div style="display:inline-block;border:2px dashed #E07856;border-radius:10px;padding:14px 32px;background-color:#fff7f3;">
+          <span style="font-size:26px;font-weight:bold;letter-spacing:3px;color:#0d1a44;">VIP30</span>
+        </div>
+      </div>
+
+      <p style="margin:0 0 8px;line-height:1.6;">Use code <strong>VIP30</strong> at checkout to receive <strong>30% OFF</strong> your next coffee purchase.</p>
+      <p style="margin:0 0 20px;line-height:1.6;color:#666;"><em>Please note: This code is valid for one-time use only.</em></p>
+
+      <div style="text-align:center;margin:0 0 24px;">
+        <a href="${shopUrl}" style="display:inline-block;padding:14px 40px;background-color:#E07856;color:#ffffff !important;text-decoration:none;border-radius:6px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;font-size:14px;">Shop Now</a>
+      </div>
+
+      <p style="margin:0;line-height:1.5;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:16px;">
+        <strong>Disclaimer:</strong> VIP membership is available exclusively to customers who register using the email address that received this invitation. Registrations made with any other email address will not qualify for VIP status or associated benefits, including the one-time 30% discount code (VIP30).
+      </p>
+    </div>
+    <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
+      <p style="margin:0;">&copy; ${new Date().getFullYear()} ${companyNameVar}. All rights reserved.</p>
+    </div>
+  </div>
+</body>
+</html>`,
+        });
+
+        // Notify Admin about new VIP registration
+        if (adminEmailList.length > 0) {
+          await this.notificationService.sendNotification({
+            templateKey: 'admin_new_vip_notification',
+            recipientEmail: adminEmailList,
+            recipientName: 'Admin',
+            variables: {
+              customer_name: customerName,
+              customer_email: email,
+              customer_phone: telephone || 'N/A',
+            },
+            customSubject: `New VIP Registration: ${customerName}`,
+            customBody: `
+<!DOCTYPE html>
+<html>
+<body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
+  <div style="max-width:600px;margin:0 auto;padding:20px;">
+    <h2>New VIP Registration</h2>
+    <p>A new customer has registered as a VIP member on the storefront:</p>
+    <ul>
+      <li><strong>Name:</strong> ${customerName}</li>
+      <li><strong>Email:</strong> ${email}</li>
+      <li><strong>Phone:</strong> ${telephone || 'N/A'}</li>
+    </ul>
+    <p>The account has been automatically approved and marked as VIP.</p>
+  </div>
+</body>
+</html>`,
+          });
+        }
       } else {
         // Regular customer registration
         await this.notificationService.sendNotification({
