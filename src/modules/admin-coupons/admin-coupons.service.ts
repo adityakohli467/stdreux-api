@@ -18,8 +18,17 @@ export class AdminCouponsService implements OnModuleInit {
       await this.dataSource.query(
         `ALTER TABLE coupon ADD COLUMN IF NOT EXISTS customer_types varchar(100)`,
       );
+      await this.dataSource.query(
+        `ALTER TABLE coupon ADD COLUMN IF NOT EXISTS expiry_date date`,
+      );
+      await this.dataSource.query(
+        `ALTER TABLE coupon ADD COLUMN IF NOT EXISTS recurrence varchar(20)`,
+      );
+      await this.dataSource.query(
+        `ALTER TABLE coupon ADD COLUMN IF NOT EXISTS categories varchar(500)`,
+      );
     } catch (error) {
-      this.logger.error('Failed to ensure coupon.customer_types column', error);
+      this.logger.error('Failed to ensure coupon columns', error);
     }
   }
 
@@ -44,6 +53,46 @@ export class AdminCouponsService implements OnModuleInit {
       .filter((s) => allowed.includes(s));
     const unique = Array.from(new Set(cleaned));
     return unique.length > 0 ? unique.join(',') : null;
+  }
+
+  /**
+   * Normalize the incoming categories value (array or comma string) into a
+   * comma-separated string of category ids. Returns null when nothing is
+   * selected, which means the coupon applies to all categories.
+   */
+  private normalizeCategories(input: any): string | null {
+    if (input === undefined || input === null) return null;
+    let arr: any[] = [];
+    if (Array.isArray(input)) {
+      arr = input;
+    } else if (typeof input === 'string') {
+      arr = input.split(',');
+    } else {
+      return null;
+    }
+    const cleaned = arr
+      .map((s) => String(s).trim())
+      .filter((s) => s.length > 0);
+    const unique = Array.from(new Set(cleaned));
+    return unique.length > 0 ? unique.join(',') : null;
+  }
+
+  /**
+   * Normalize the recurrence value. Allowed: 'once' | 'multiple'. Defaults to
+   * 'multiple' when nothing valid is provided.
+   */
+  private normalizeRecurrence(input: any): string {
+    const value = String(input ?? '').trim().toLowerCase();
+    return value === 'once' ? 'once' : 'multiple';
+  }
+
+  /**
+   * Normalize the expiry date. Empty/blank means no expiry (null).
+   */
+  private normalizeExpiryDate(input: any): string | null {
+    if (input === undefined || input === null) return null;
+    const value = String(input).trim();
+    return value.length > 0 ? value : null;
   }
 
   async findAll(query: any): Promise<any> {
@@ -92,7 +141,7 @@ export class AdminCouponsService implements OnModuleInit {
       throw new BadRequestException('Invalid request body');
     }
 
-    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types } = createCouponDto;
+    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types, expiry_date, recurrence, categories } = createCouponDto;
 
     if (!coupon_code || (typeof coupon_code === 'string' && !coupon_code.trim())) {
       throw new BadRequestException('Coupon code is required');
@@ -100,10 +149,10 @@ export class AdminCouponsService implements OnModuleInit {
 
     try {
       const result = await this.dataSource.query(
-        `INSERT INTO coupon (coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
+        `INSERT INTO coupon (coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types, expiry_date, recurrence, categories)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [coupon_code, coupon_description, coupon_discount, type || 'F', status !== undefined ? status : 1, show_on_storefront || false, this.normalizeCustomerTypes(customer_types)],
+        [coupon_code, coupon_description, coupon_discount, type || 'F', status !== undefined ? status : 1, show_on_storefront || false, this.normalizeCustomerTypes(customer_types), this.normalizeExpiryDate(expiry_date), this.normalizeRecurrence(recurrence), this.normalizeCategories(categories)],
       );
 
       return { coupon: result[0], message: 'Coupon created successfully' };
@@ -116,7 +165,7 @@ export class AdminCouponsService implements OnModuleInit {
   }
 
   async update(id: number, updateCouponDto: any): Promise<any> {
-    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types } = updateCouponDto;
+    const { coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, customer_types, expiry_date, recurrence, categories } = updateCouponDto;
 
     const result = await this.dataSource.query(
       `UPDATE coupon SET
@@ -126,10 +175,13 @@ export class AdminCouponsService implements OnModuleInit {
         type = $4,
         status = $5,
         show_on_storefront = $6,
-        customer_types = $7
-      WHERE coupon_id = $8
+        customer_types = $7,
+        expiry_date = $8,
+        recurrence = $9,
+        categories = $10
+      WHERE coupon_id = $11
       RETURNING *`,
-      [coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, this.normalizeCustomerTypes(customer_types), id],
+      [coupon_code, coupon_description, coupon_discount, type, status, show_on_storefront, this.normalizeCustomerTypes(customer_types), this.normalizeExpiryDate(expiry_date), this.normalizeRecurrence(recurrence), this.normalizeCategories(categories), id],
     );
 
     if (result.length === 0) {
