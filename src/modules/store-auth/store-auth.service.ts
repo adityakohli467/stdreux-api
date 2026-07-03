@@ -623,7 +623,7 @@ export class StoreAuthService implements OnModuleInit {
       </div>
 
       <p style="margin:0;line-height:1.5;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:16px;">
-        <strong>Disclaimer:</strong> VIP membership is available exclusively to customers who register using the email address that received this invitation. Registrations made with any other email address will not qualify for VIP status or associated benefits, including the one-time 30% discount code (VIP30).
+        <strong>Disclaimer:</strong> VIP membership is available exclusively to customers who register using the email address that received this invitation. Registrations made with any other email address will not qualify for VIP status or associated benefits, including the one-time 30% discount code (VIP30). Please register within two weeks of receiving this email to enjoy the VIP benefits.
       </p>
     </div>
     <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
