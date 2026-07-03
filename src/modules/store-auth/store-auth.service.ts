@@ -599,10 +599,9 @@ export class StoreAuthService implements OnModuleInit {
   <div style="max-width:600px;margin:0 auto;background-color:#ffffff;">
     <div style="background-color:#0d1a44;padding:32px 24px;text-align:center;">
       <h1 style="margin:0;color:#ffffff;font-size:24px;letter-spacing:1px;">${companyNameVar}</h1>
-      <p style="margin:8px 0 0;color:#E07856;font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:bold;">VIP Community</p>
+      <p style="margin:8px 0 0;color:#E07856;font-size:12px;letter-spacing:3px;text-transform:uppercase;font-weight:bold;">Your St. Dreux VIP Perks Are Ready</p>
     </div>
     <div style="padding:28px 28px 8px;">
-      <h2 style="margin:0 0 16px;color:#0d1a44;font-size:20px;">Welcome to St. Dreux VIP</h2>
       <p style="margin:0 0 14px;line-height:1.6;">Hi ${firstname},</p>
       <p style="margin:0 0 14px;line-height:1.6;">Thank you for joining the St. Dreux VIP Community.</p>
       <p style="margin:0 0 14px;line-height:1.6;">We're excited to have you with us. As a VIP member, you'll enjoy exclusive offers, priority access to new coffee releases, member-only promotions, and a first look at our latest coffees throughout the year.</p>
