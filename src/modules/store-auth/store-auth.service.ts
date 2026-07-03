@@ -587,7 +587,7 @@ export class StoreAuthService implements OnModuleInit {
           recipientEmail: email,
           recipientName: customerName,
           variables: {},
-          customSubject: 'Welcome to St. Dreux VIP',
+          customSubject: 'Your St. Dreux VIP Membership is Now Active',
           customBody: `
 <!DOCTYPE html>
 <html>
