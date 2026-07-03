@@ -690,7 +690,8 @@ export class StorePaymentService {
       await queryRunner.commitTransaction();
       this.logger.log(`[Stripe] Order ${orderId} marked as paid`);
 
-      // Send payment confirmation email
+      // Payment-received email disabled per request. The order confirmation email is unaffected.
+      /*
       try {
         const orderQuery = await this.dataSource.query(
           `SELECT 
@@ -805,6 +806,7 @@ export class StorePaymentService {
           emailError,
         );
       }
+      */
 
       // Create invoice in Xero for the paid order
       try {
