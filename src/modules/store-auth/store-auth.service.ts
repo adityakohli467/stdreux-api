@@ -616,7 +616,13 @@ export class StoreAuthService implements OnModuleInit {
       </div>
 
       <p style="margin:0 0 8px;line-height:1.6;">Use code <strong>VIP30</strong> at checkout to receive <strong>30% OFF</strong> your next coffee purchase.</p>
-      <p style="margin:0 0 20px;line-height:1.6;color:#666;"><em>Please note: This code is valid for one-time use only.</em></p>
+      <p style="margin:0 0 12px;line-height:1.6;color:#666;"><em>Please note: This code is valid for one-time use only.</em></p>
+      <div style="margin:0 0 20px;padding:12px 16px;background-color:#fff7f3;border-left:4px solid #E07856;border-radius:6px;">
+        <p style="margin:0;line-height:1.6;color:#0d1a44;font-size:13px;">
+          <strong>This coupon code expires in three months.</strong><br />
+          Expiry Date: <strong>Oct 5th, 2026</strong>
+        </p>
+      </div>
 
       <div style="text-align:center;margin:0 0 24px;">
         <a href="${shopUrl}" style="display:inline-block;padding:14px 40px;background-color:#105a9c;color:#ffffff !important;text-decoration:none;border-radius:6px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;font-size:14px;">Shop Now</a>
