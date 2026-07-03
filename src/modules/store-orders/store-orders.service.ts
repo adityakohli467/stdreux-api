@@ -477,7 +477,9 @@ export class StoreOrdersService {
       const total = afterDiscount + gst + deliveryFee;
 
       // Parse delivery date and time (support direct delivery_date_time or separate date/time)
-      let deliveryDateTime = new Date();
+      // Default to null so orders placed without a delivery date (e.g. retail checkout)
+      // do not show a misleading delivery date in admin.
+      let deliveryDateTime: Date | null = null;
       const directDateTime = (delivery_date_time && delivery_date_time.trim()) || '';
       const preferredDate =
         (next_delivery_date && next_delivery_date.trim()) ||
