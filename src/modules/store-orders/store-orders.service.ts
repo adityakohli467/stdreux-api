@@ -848,19 +848,21 @@ export class StoreOrdersService {
   <style>
     body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; background-color: #f4f4f4; }
     .container { max-width: 600px; margin: 0 auto; background-color: #fff; padding: 20px; }
-    .header { background-color: #0d6efd; color: white; padding: 20px; text-align: center; }
-    .content { padding: 20px; }
-    .order-details { background-color: #f9f9f9; padding: 15px; margin: 15px 0; border-radius: 5px; }
-    .order-info { margin: 10px 0; }
-    .order-info strong { display: inline-block; width: 150px; }
-    .cta-button { display: inline-block; padding: 12px 24px; background-color: #0d6efd; color: #ffffff !important; text-decoration: none; border-radius: 5px; margin: 10px 5px; }
-    .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+    .header { background-color: #0d1a44; color: white; padding: 28px 20px; text-align: center; }
+    .content { padding: 24px; }
+    .order-details { background-color: #f7f9fc; border: 1px solid #e6ebf2; padding: 18px 20px; margin: 18px 0; border-radius: 8px; }
+    .order-details h3 { margin: 0 0 14px; color: #0d1a44; font-size: 15px; border-bottom: 2px solid #105a9c; padding-bottom: 8px; }
+    .order-info { margin: 8px 0; font-size: 14px; }
+    .order-info strong { display: inline-block; width: 150px; color: #666; font-weight: normal; }
+    .cta-button { display: inline-block; padding: 14px 40px; background-color: #105a9c; color: #ffffff !important; text-decoration: none; border-radius: 6px; margin: 10px 5px; font-weight: bold; }
+    .footer { text-align: center; padding: 20px; color: #999; font-size: 12px; border-top: 1px solid #eee; }
   </style>
 </head>
 <body>
   <div class="container">
     <div class="header">
-      <h1>${customerHeader}</h1>
+      <h1 style="margin:0;font-size:22px;letter-spacing:0.5px;">${companyName}</h1>
+      <p style="margin:10px 0 0;font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#7fb2e0;font-weight:bold;">${customerHeader}</p>
     </div>
     <div class="content">
       <p>Dear ${customerName},</p>
@@ -874,19 +876,16 @@ export class StoreOrdersService {
         ${order.delivery_address ? `<div class="order-info"><strong>Delivery Address:</strong> ${order.delivery_address}</div>` : ''}
       </div>
 
-      <div style="text-align: center; margin: 30px 0;">
-        ${(order.payment_status !== 'succeeded' && order.order_status !== 2) ? `<a href="${paymentLink}" class="cta-button" style="color: #ffffff !important;"><span style="color: #ffffff !important;">Pay Now</span></a>` : ''}
-        <a href="${invoiceUrl}" class="cta-button" style="background-color: #28a745; color: #ffffff !important;"><span style="color: #ffffff !important;">View Invoice</span></a>
-      </div>
+      ${(order.payment_status !== 'succeeded' && order.order_status !== 2) ? `<div style="text-align: center; margin: 30px 0;"><a href="${paymentLink}" class="cta-button" style="color: #ffffff !important;"><span style="color: #ffffff !important;">Pay Now</span></a></div>` : ''}
 
       ${(order.payment_status !== 'succeeded' && order.order_status !== 2) ? `<p>You can pay for your order by clicking the "Pay Now" button above. Once payment is received, we'll process your order.</p>` : ''}
       
+      <p>A copy of your invoice is attached to this email for your records.</p>
       <p>If you have any questions about your order, please don't hesitate to contact us.</p>
       
       <p>Thank you for choosing ${companyName}!</p>
     </div>
     <div class="footer">
-      <p>If you have any questions, please contact us.</p>
       <p>&copy; ${new Date().getFullYear()} ${companyName}. All rights reserved.</p>
     </div>
   </div>
