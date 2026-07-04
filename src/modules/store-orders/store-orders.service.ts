@@ -461,26 +461,24 @@ export class StoreOrdersService {
       // Apply discounts
       const afterDiscount = afterWholesaleDiscount - couponDiscount;
 
-      // Calculate GST and total
-      // For wholesale customers, GST is exclusive (added to total)
-      // For retail customers, GST is inclusive (not added to total)
-      // GST only applies to items NOT in a gst_free category
+      // Calculate GST and total.
+      // GST matches the admin view-order rule exactly: (taxable + delivery) / 10
+      // on full non-GST-free line totals. It is computed for ALL customer types
+      // so the amount can be displayed (emails/invoice), but only ADDED to the
+      // total for wholesale (exclusive). Retail/Guest: inclusive (shown, not added).
       const deliveryFee = parseFloat((delivery_fee || 0).toString());
-      let gst = 0;
-      if (isWholesale) {
-        let taxableAmount = 0;
-        for (const item of orderItems) {
-          const catResult = await queryRunner.query(
-            `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
-             FROM product_category pc JOIN category c ON pc.category_id = c.category_id
-             WHERE pc.product_id = $1`, [item.product_id]);
-          if (!catResult[0]?.is_gst_free) {
-            taxableAmount += item.total;
-          }
+      let taxableAmount = 0;
+      for (const item of orderItems) {
+        const catResult = await queryRunner.query(
+          `SELECT COALESCE(bool_or(c.gst_free), false) as is_gst_free
+           FROM product_category pc JOIN category c ON pc.category_id = c.category_id
+           WHERE pc.product_id = $1`, [item.product_id]);
+        if (!catResult[0]?.is_gst_free) {
+          taxableAmount += item.total;
         }
-        gst = Math.round((taxableAmount + deliveryFee) / 10 * 100) / 100;
       }
-      const total = afterDiscount + gst + deliveryFee;
+      const gst = Math.round((taxableAmount + deliveryFee) / 10 * 100) / 100;
+      const total = afterDiscount + (isWholesale ? gst : 0) + deliveryFee;
 
       // Parse delivery date and time (support direct delivery_date_time or separate date/time)
       // Default to null so orders placed without a delivery date (e.g. retail checkout)
@@ -883,7 +881,7 @@ export class StoreOrdersService {
         <div class="order-info"><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</div>
         ${wholesaleDiscount > 0 ? `<div class="order-info"><strong>Wholesale Discount:</strong> -$${wholesaleDiscount.toFixed(2)}</div>` : ''}
         ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount${coupon_code ? ` (${coupon_code})` : ''}:</strong> -$${couponDiscount.toFixed(2)}</div>` : ''}
-        ${gst > 0 ? `<div class="order-info"><strong>GST:</strong> $${gst.toFixed(2)}</div>` : ''}
+        ${gst > 0 ? `<div class="order-info"><strong>GST${isWholesale ? '' : ' (incl.)'}:</strong> $${gst.toFixed(2)}</div>` : ''}
         <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
         <div class="order-info"><strong>Order Total:</strong> $${total.toFixed(2)}</div>
         ${order.delivery_address ? `<div class="order-info"><strong>Delivery Address:</strong> ${order.delivery_address}</div>` : ''}
@@ -993,7 +991,7 @@ export class StoreOrdersService {
         <div class="order-info"><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</div>
         ${wholesaleDiscount > 0 ? `<div class="order-info"><strong>Wholesale Discount:</strong> -$${wholesaleDiscount.toFixed(2)}</div>` : ''}
         ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount:</strong> -$${couponDiscount.toFixed(2)}</div>` : ''}
-        <div class="order-info"><strong>GST:</strong> $${gst.toFixed(2)}</div>
+        <div class="order-info"><strong>GST${isWholesale ? '' : ' (incl.)'}:</strong> $${gst.toFixed(2)}</div>
         <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
         ${delivery_time ? `<div class="order-info"><strong>Delivery Time:</strong> ${delivery_time}</div>` : ''}
         ${order.delivery_address ? `<div class="order-info"><strong>Delivery Address:</strong> ${order.delivery_address}</div>` : ''}

@@ -222,6 +222,20 @@ export class StoreAuthService implements OnModuleInit {
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Wrap the user + company + customer inserts in a single transaction so a
+    // failure part-way through (e.g. the customer insert hitting a NOT NULL
+    // constraint) never leaves an orphaned "user" row behind. Orphaned users
+    // previously blocked re-registration with a misleading "email already
+    // exists" error even though no usable account had actually been created.
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    let user: any;
+    let customer: any;
+    let finalCompanyId: number | null = company_id || null;
+
+    try {
     // Create user
     const userQuery = `
       INSERT INTO "user" (
@@ -235,7 +249,7 @@ export class StoreAuthService implements OnModuleInit {
       RETURNING *
     `;
 
-    const userResult = await this.dataSource.query(userQuery, [
+    const userResult = await queryRunner.query(userQuery, [
       email,
       lastname ? `${firstname} ${lastname}`.trim() : firstname,
       username,
@@ -244,8 +258,7 @@ export class StoreAuthService implements OnModuleInit {
       1, // is_customer flag
     ]);
 
-    const user = userResult[0];
-    let finalCompanyId = company_id || null;
+    user = userResult[0];
 
     // Create company if wholesaler and company_name provided
     if (company_name) {
@@ -269,7 +282,7 @@ export class StoreAuthService implements OnModuleInit {
         RETURNING company_id
       `;
 
-      const companyResult = await this.dataSource.query(companyQuery, [
+      const companyResult = await queryRunner.query(companyQuery, [
         user.user_id,
         company_name,
         fullAddress || null,
@@ -291,7 +304,7 @@ export class StoreAuthService implements OnModuleInit {
     const customerAddress = addressParts.join(', ');
 
     // Check which columns exist in customer table
-    const columnCheck = await this.dataSource.query(`
+    const columnCheck = await queryRunner.query(`
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'customer' 
@@ -403,9 +416,17 @@ export class StoreAuthService implements OnModuleInit {
       RETURNING *
     `;
 
-    const customerResult = await this.dataSource.query(customerQuery, finalValues);
+    const customerResult = await queryRunner.query(customerQuery, finalValues);
 
-    const customer = customerResult[0];
+    customer = customerResult[0];
+
+    await queryRunner.commitTransaction();
+    } catch (txError) {
+      await queryRunner.rollbackTransaction();
+      throw txError;
+    } finally {
+      await queryRunner.release();
+    }
 
     // Send registration notification email
     try {
