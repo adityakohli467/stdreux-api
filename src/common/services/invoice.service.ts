@@ -815,7 +815,39 @@ export class InvoiceService {
         }
 
         // Footer Section
-        const footerY = Math.max(currentY + 16, pageHeight - 110);
+        // Compute the exact height the footer content needs so it can be anchored
+        // near the bottom of the page WITHOUT overflowing the bottom margin and
+        // spilling onto extra pages.
+        const hasBankDetails = !!(
+          data.location_account_name ||
+          data.location_account_number ||
+          data.location_bsb
+        );
+        const hasLocationInfo = !!(data.location_name || data.location_address);
+
+        let footerContentHeight = 8; // padding below the divider line
+        if (hasBankDetails) {
+          footerContentHeight += 12; // "Bank Details" heading
+          if (data.location_account_name) footerContentHeight += 11;
+          if (data.location_account_number) footerContentHeight += 11;
+          if (data.location_bsb) footerContentHeight += 11;
+          footerContentHeight += 4;
+        }
+        if (hasLocationInfo) {
+          footerContentHeight += 10; // "Location" heading
+          footerContentHeight += 10; // location info line
+        }
+        footerContentHeight += 4 + 12; // thank-you line
+
+        const footerBottomMargin = 40;
+        let footerY = pageHeight - footerBottomMargin - footerContentHeight;
+
+        // If the invoice content already extends into the footer zone, move the
+        // footer to a fresh page instead of letting it overflow line-by-line.
+        if (footerY < currentY + 16) {
+          doc.addPage();
+          footerY = pageHeight - footerBottomMargin - footerContentHeight;
+        }
 
         doc.moveTo(40, footerY).lineTo(560, footerY).strokeColor(borderGray).lineWidth(0.5).stroke();
 
