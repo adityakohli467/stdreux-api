@@ -7,6 +7,7 @@ import {
   Query,
   UseGuards,
   Request,
+  Res,
   ParseIntPipe,
   HttpCode,
   HttpStatus,
@@ -14,6 +15,7 @@ import {
   UploadedFiles,
   BadRequestException,
 } from '@nestjs/common';
+import { Response } from 'express';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
 import { StoreOrdersService } from './store-orders.service';
@@ -174,6 +176,29 @@ export class StoreOrdersController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.storeOrdersService.getOrderPublicView(id);
+  }
+
+  @Get(':id/invoice-pdf')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Download the tax-invoice PDF for an order' })
+  @ApiParam({ name: 'id', type: Number })
+  async getInvoicePdf(
+    @Request() req: any,
+    @Param('id', ParseIntPipe) id: number,
+    @Res() res: Response,
+  ) {
+    const userId = req.user?.user_id;
+    if (!userId) {
+      throw new Error('Unauthorized');
+    }
+    const pdfBuffer = await this.storeOrdersService.getInvoicePdf(userId, id);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="invoice-${id}.pdf"`,
+      'Content-Length': pdfBuffer.length,
+    });
+    res.end(pdfBuffer);
   }
 
   @Get(':id')

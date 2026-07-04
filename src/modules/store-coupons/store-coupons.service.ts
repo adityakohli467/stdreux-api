@@ -448,6 +448,19 @@ export class StoreCouponsService {
     // Don't allow discount to exceed the applicable subtotal.
     discount = Math.min(discount, applicableSubtotal);
 
+    // Resolve the applicable category names for display only (never affects
+    // any calculation).
+    let applicableCategories: string[] = [];
+    if (allowedCategoryIds.length > 0) {
+      const nameRows = await this.dataSource.query(
+        `SELECT category_name FROM category WHERE category_id = ANY($1::int[])`,
+        [allowedCategoryIds],
+      );
+      applicableCategories = nameRows
+        .map((r: any) => r.category_name)
+        .filter(Boolean);
+    }
+
     return {
       valid: true,
       coupon: {
@@ -458,6 +471,7 @@ export class StoreCouponsService {
         discount_amount: parseFloat(discount.toFixed(2)),
         applicable_subtotal: parseFloat(applicableSubtotal.toFixed(2)),
         category_restricted: allowedCategoryIds.length > 0,
+        applicable_categories: applicableCategories,
       },
     };
   }

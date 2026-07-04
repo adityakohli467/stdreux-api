@@ -47,6 +47,7 @@ export interface InvoiceData {
   wholesale_discount?: number;
   delivery_fee: number;
   discount: number;
+  discount_categories?: string[];
   gst: number;
   total: number;
   amount_paid: number;
@@ -138,6 +139,7 @@ export class InvoiceService {
         cp.coupon_code,
         cp.type as coupon_type,
         cp.coupon_discount,
+        cp.categories as coupon_categories,
         o.delivery_method,
         o.delivery_contact,
         o.delivery_details,
@@ -251,6 +253,10 @@ export class InvoiceService {
 
     // Calculate coupon discount
     let couponDiscount = 0;
+    // Names of the categories a category-restricted coupon applies to. Used only
+    // for display so the customer knows which products the discount covered - it
+    // never affects any calculation.
+    let discountCategories: string[] = [];
     if (order.coupon_id) {
       // First, try to use stored coupon_discount from orders table (for historical accuracy)
       if (order.stored_coupon_discount && parseFloat(order.stored_coupon_discount) > 0) {
@@ -271,6 +277,23 @@ export class InvoiceService {
         const storedTotal = parseFloat(order.order_total || 0);
         if (storedTotal < tempTotal) {
           couponDiscount = tempTotal - storedTotal;
+        }
+      }
+
+      // Resolve the applicable category names for a category-restricted coupon.
+      if (couponDiscount > 0 && order.coupon_categories) {
+        const allowedCategoryIds = String(order.coupon_categories)
+          .split(',')
+          .map((s) => parseInt(s.trim(), 10))
+          .filter((n) => !isNaN(n));
+        if (allowedCategoryIds.length > 0) {
+          const nameRows = await this.dataSource.query(
+            `SELECT category_name FROM category WHERE category_id = ANY($1::int[])`,
+            [allowedCategoryIds],
+          );
+          discountCategories = nameRows
+            .map((r: any) => r.category_name)
+            .filter(Boolean);
         }
       }
     }
@@ -336,6 +359,7 @@ export class InvoiceService {
       wholesale_discount: wholesaleDiscount,
       delivery_fee: deliveryFee,
       discount: couponDiscount,
+      discount_categories: discountCategories,
       gst,
       total,
       amount_paid: amountPaid,
@@ -742,6 +766,17 @@ export class InvoiceService {
           doc.text(`-$${data.discount.toFixed(2)}`, totalsValX, currentY, { width: 80, align: 'right' });
           doc.fillColor(darkGray);
           currentY += 14;
+          if (data.discount_categories && data.discount_categories.length > 0) {
+            doc.fontSize(7).fillColor('#6c757d');
+            doc.text(
+              `(applies to ${data.discount_categories.join(', ')} only)`,
+              300,
+              currentY,
+              { width: 260, align: 'right' },
+            );
+            doc.fontSize(9).fillColor(darkGray);
+            currentY += 12;
+          }
         }
 
         if (data.delivery_fee > 0) {

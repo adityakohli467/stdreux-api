@@ -384,6 +384,7 @@ export class AdminOrdersService implements OnModuleInit {
         cp.coupon_code,
         cp.type as coupon_type,
         cp.coupon_discount,
+        cp.categories as coupon_categories,
         COALESCE((
           SELECT json_agg(
             json_build_object(
@@ -560,6 +561,24 @@ export class AdminOrdersService implements OnModuleInit {
       // Settings table may not exist
     }
 
+    // Resolve applicable coupon category names for display only (never affects calculation)
+    let couponCategoryNames: string[] = [];
+    if (order.coupon_id && couponDiscount > 0 && order.coupon_categories) {
+      const allowedCategoryIds = String(order.coupon_categories)
+        .split(',')
+        .map((s) => parseInt(s.trim(), 10))
+        .filter((n) => !isNaN(n));
+      if (allowedCategoryIds.length > 0) {
+        const nameRows = await this.dataSource.query(
+          `SELECT category_name FROM category WHERE category_id = ANY($1::int[])`,
+          [allowedCategoryIds],
+        );
+        couponCategoryNames = nameRows
+          .map((r: any) => r.category_name)
+          .filter(Boolean);
+      }
+    }
+
     return {
       order: {
         ...orderWithoutProducts,
@@ -583,6 +602,7 @@ export class AdminOrdersService implements OnModuleInit {
         coupon_discount: couponDiscount,
         coupon_code: couponCode,
         coupon_id: order.coupon_id || null, // Ensure coupon_id is included
+        coupon_categories: couponCategoryNames,
         total_discount: wholesaleDiscount + couponDiscount,
         after_wholesale_discount: subtotalAfterWholesale,
         after_discount: afterDiscount,

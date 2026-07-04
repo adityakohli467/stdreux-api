@@ -326,6 +326,10 @@ export class StoreOrdersService {
       // Apply coupon if provided (after wholesale discount)
       let couponDiscount = 0;
       let couponId = null;
+      // Names of the categories a category-restricted coupon applies to. Used
+      // only for display (emails/invoice) so customers know which products the
+      // discount covered - it never affects any calculation.
+      let couponCategoryNames: string[] = [];
 
       if (coupon_code) {
         // Trim whitespace and make case-insensitive lookup
@@ -406,6 +410,13 @@ export class StoreOrdersService {
               .map((s) => parseInt(s.trim(), 10))
               .filter((n) => !isNaN(n));
             if (allowedCategoryIds.length > 0) {
+              const nameRows = await queryRunner.query(
+                `SELECT category_name FROM category WHERE category_id = ANY($1::int[])`,
+                [allowedCategoryIds],
+              );
+              couponCategoryNames = nameRows
+                .map((r: any) => r.category_name)
+                .filter(Boolean);
               const productIds = Array.from(
                 new Set(
                   orderItems
@@ -880,7 +891,7 @@ export class StoreOrdersService {
         <div class="order-info"><strong>Order Date:</strong> ${new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
         <div class="order-info"><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</div>
         ${wholesaleDiscount > 0 ? `<div class="order-info"><strong>Wholesale Discount:</strong> -$${wholesaleDiscount.toFixed(2)}</div>` : ''}
-        ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount${coupon_code ? ` (${coupon_code})` : ''}:</strong> -$${couponDiscount.toFixed(2)}</div>` : ''}
+        ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount${coupon_code ? ` (${coupon_code})` : ''}:</strong> -$${couponDiscount.toFixed(2)}${couponCategoryNames.length > 0 ? ` <span style="color:#888;font-size:12px;">(applies to ${couponCategoryNames.join(', ')} only)</span>` : ''}</div>` : ''}
         ${gst > 0 ? `<div class="order-info"><strong>GST${isWholesale ? '' : ' (incl.)'}:</strong> $${gst.toFixed(2)}</div>` : ''}
         <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
         <div class="order-info"><strong>Order Total:</strong> $${total.toFixed(2)}</div>
@@ -990,7 +1001,7 @@ export class StoreOrdersService {
         <div class="order-info"><strong>Order Total:</strong> $${total.toFixed(2)}</div>
         <div class="order-info"><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</div>
         ${wholesaleDiscount > 0 ? `<div class="order-info"><strong>Wholesale Discount:</strong> -$${wholesaleDiscount.toFixed(2)}</div>` : ''}
-        ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount:</strong> -$${couponDiscount.toFixed(2)}</div>` : ''}
+        ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount${coupon_code ? ` (${coupon_code})` : ''}:</strong> -$${couponDiscount.toFixed(2)}${couponCategoryNames.length > 0 ? ` <span style="color:#888;font-size:12px;">(applies to ${couponCategoryNames.join(', ')} only)</span>` : ''}</div>` : ''}
         <div class="order-info"><strong>GST${isWholesale ? '' : ' (incl.)'}:</strong> $${gst.toFixed(2)}</div>
         <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
         ${delivery_time ? `<div class="order-info"><strong>Delivery Time:</strong> ${delivery_time}</div>` : ''}
@@ -1303,6 +1314,34 @@ export class StoreOrdersService {
   /**
    * Get single order details
    */
+  /**
+   * Generate the tax-invoice PDF for an order, but only after confirming the
+   * order belongs to the authenticated customer. Returns the PDF buffer so the
+   * controller can stream it inline.
+   */
+  async getInvoicePdf(userId: number, orderId: number): Promise<Buffer> {
+    const customerResult = await this.dataSource.query(
+      'SELECT customer_id FROM customer WHERE user_id = $1',
+      [userId],
+    );
+    const customer = customerResult[0];
+
+    if (!customer) {
+      throw new NotFoundException('Customer not found');
+    }
+
+    const orderResult = await this.dataSource.query(
+      'SELECT order_id FROM orders WHERE order_id = $1 AND customer_id = $2',
+      [orderId, customer.customer_id],
+    );
+
+    if (!orderResult[0]) {
+      throw new NotFoundException('Order not found');
+    }
+
+    return this.invoiceService.generatePDFBuffer(orderId);
+  }
+
   async getOrder(userId: number, orderId: number) {
     // Get customer with customer_type
     const customerQuery = `
