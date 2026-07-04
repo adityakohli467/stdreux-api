@@ -169,8 +169,16 @@ export class StoreCouponsService {
     couponId: number,
   ): Promise<boolean> {
     try {
+      // Match prior usage by the auth user OR by any customer record linked to
+      // that user. This must stay consistent with the check performed at order
+      // creation (store-orders.service.ts), otherwise the storefront can show a
+      // discount that is silently dropped when the order is created.
       const rows = await this.dataSource.query(
-        `SELECT 1 FROM orders WHERE coupon_id = $1 AND user_id = $2 LIMIT 1`,
+        `SELECT 1 FROM orders
+          WHERE coupon_id = $1
+            AND (user_id = $2
+                 OR customer_id IN (SELECT customer_id FROM customer WHERE user_id = $2))
+          LIMIT 1`,
         [couponId, userId],
       );
       return rows.length > 0;

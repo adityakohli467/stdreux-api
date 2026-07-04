@@ -384,9 +384,15 @@ export class StoreOrdersService {
             couponEligible &&
             String(coupon.recurrence || '').trim().toLowerCase() === 'once'
           ) {
+            // Match prior usage by customer_id OR the auth user_id so this stays
+            // consistent with the storefront validation check
+            // (store-coupons.service.ts hasCustomerUsedCoupon).
             const usedRes = await queryRunner.query(
-              `SELECT 1 FROM orders WHERE coupon_id = $1 AND customer_id = $2 LIMIT 1`,
-              [coupon.coupon_id, customer.customer_id],
+              `SELECT 1 FROM orders
+                WHERE coupon_id = $1
+                  AND (customer_id = $2 OR (user_id IS NOT NULL AND user_id = $3))
+                LIMIT 1`,
+              [coupon.coupon_id, customer.customer_id, userId || null],
             );
             if (usedRes.length > 0) couponEligible = false;
           }
@@ -874,7 +880,12 @@ export class StoreOrdersService {
         <h3>Order Details</h3>
         <div class="order-info"><strong>Order Number:</strong> #${orderId}</div>
         <div class="order-info"><strong>Order Date:</strong> ${new Date().toLocaleDateString('en-AU', { day: '2-digit', month: '2-digit', year: '2-digit' })}</div>
-        <div class="order-info"><strong>Order Total:</strong> $${(total - gst).toFixed(2)}</div>
+        <div class="order-info"><strong>Subtotal:</strong> $${subtotal.toFixed(2)}</div>
+        ${wholesaleDiscount > 0 ? `<div class="order-info"><strong>Wholesale Discount:</strong> -$${wholesaleDiscount.toFixed(2)}</div>` : ''}
+        ${couponDiscount > 0 ? `<div class="order-info"><strong>Coupon Discount${coupon_code ? ` (${coupon_code})` : ''}:</strong> -$${couponDiscount.toFixed(2)}</div>` : ''}
+        ${gst > 0 ? `<div class="order-info"><strong>GST:</strong> $${gst.toFixed(2)}</div>` : ''}
+        <div class="order-info"><strong>Delivery Fee:</strong> $${deliveryFee.toFixed(2)}</div>
+        <div class="order-info"><strong>Order Total:</strong> $${total.toFixed(2)}</div>
         ${order.delivery_address ? `<div class="order-info"><strong>Delivery Address:</strong> ${order.delivery_address}</div>` : ''}
       </div>
 
@@ -1101,11 +1112,16 @@ export class StoreOrdersService {
         o.delivery_date_time,
         o.delivery_address,
         o.delivery_fee,
+        o.coupon_id,
+        o.coupon_discount,
+        cp.coupon_code,
+        COALESCE(SUM(op.total), 0) as subtotal,
         COALESCE(COUNT(op.order_product_id), 0)::integer as item_count
       FROM orders o
       LEFT JOIN order_product op ON o.order_id = op.order_id
+      LEFT JOIN coupon cp ON o.coupon_id = cp.coupon_id
       WHERE o.customer_id = $1
-      GROUP BY o.order_id, o.order_total, o.order_status, o.date_added, o.delivery_date_time, o.delivery_address, o.delivery_fee
+      GROUP BY o.order_id, o.order_total, o.order_status, o.date_added, o.delivery_date_time, o.delivery_address, o.delivery_fee, o.coupon_id, o.coupon_discount, cp.coupon_code
       ORDER BY o.date_added DESC
       LIMIT $2 OFFSET $3
     `;
@@ -1133,6 +1149,8 @@ export class StoreOrdersService {
       return {
         ...order,
         status_name: order.order_status === 5 ? 'Completed' : (order.order_status === 1 ? 'New' : (order.order_status === 2 ? 'Paid' : (order.order_status === 4 ? 'Awaiting Approval' : (order.order_status === 7 ? 'Approved' : 'Updated')))),
+        subtotal: parseFloat(order.subtotal || '0').toFixed(2),
+        coupon_discount: parseFloat(order.coupon_discount || '0').toFixed(2),
         gst: gstVal.toFixed(4),
       };
     });
