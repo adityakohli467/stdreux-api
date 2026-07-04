@@ -493,8 +493,8 @@ export class InvoiceService {
         if (logoPath) {
           try {
             if (logoPath.endsWith('.png') || logoPath.endsWith('.jpg') || logoPath.endsWith('.jpeg')) {
-              const logoMaxHeight = 60;
-              const logoMaxWidth = 190;
+              const logoMaxHeight = 40;
+              const logoMaxWidth = 130;
               const logoX = pageMargin;
 
               doc.image(logoPath, logoX, headerY, {
