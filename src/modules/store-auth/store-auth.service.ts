@@ -628,7 +628,7 @@ export class StoreAuthService implements OnModuleInit {
       <p style="margin:0 0 14px;line-height:1.6;">We're excited to have you with us. As a VIP member, you'll enjoy exclusive offers, priority access to new coffee releases, member-only promotions, and a first look at our latest coffees throughout the year.</p>
 
       <h3 style="margin:24px 0 10px;color:#0d1a44;font-size:16px;">Your Welcome Reward</h3>
-      <p style="margin:0 0 16px;line-height:1.6;">As a thank you for joining, here's your exclusive one-time discount code:</p>
+      <p style="margin:0 0 16px;line-height:1.6;">As a thank you for joining, here's your exclusive discount code.</p>
 
       <div style="text-align:center;margin:0 0 16px;">
         <div style="display:inline-block;border:2px dashed #E07856;border-radius:10px;padding:14px 32px;background-color:#fff7f3;">
@@ -637,7 +637,7 @@ export class StoreAuthService implements OnModuleInit {
       </div>
 
       <p style="margin:0 0 8px;line-height:1.6;">Use code <strong>VIP30</strong> at checkout to receive <strong>30% OFF</strong> your next coffee purchase.</p>
-      <p style="margin:0 0 12px;line-height:1.6;color:#666;"><em>Please note: This code is valid for one-time use only.</em></p>
+      <p style="margin:0 0 12px;line-height:1.6;color:#666;"><em>Please note: This code is valid for three months for coffee purchase.</em></p>
       <div style="margin:0 0 20px;padding:12px 16px;background-color:#fff7f3;border-left:4px solid #E07856;border-radius:6px;">
         <p style="margin:0;line-height:1.6;color:#0d1a44;font-size:13px;">
           <strong>This coupon code expires in three months.</strong><br />
@@ -650,7 +650,7 @@ export class StoreAuthService implements OnModuleInit {
       </div>
 
       <p style="margin:0;line-height:1.5;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:16px;">
-        <strong>Disclaimer:</strong> VIP membership is available exclusively to customers who register using the email address that received this invitation. Registrations made with any other email address will not qualify for VIP status or associated benefits, including the one-time 30% discount code (VIP30). Please register within two weeks of receiving this email to enjoy the VIP benefits.
+        <strong>Disclaimer:</strong> VIP membership is available exclusively to customers who register using the email address that received this invitation. Registrations made with any other email address will not qualify for VIP status or associated benefits, including the 30% discount code on coffee for the next three months. Please register within two weeks of receiving this email to enjoy the VIP benefits.
       </p>
     </div>
     <div style="text-align:center;padding:20px;color:#999;font-size:12px;">
