@@ -337,7 +337,10 @@ export class StoreAuthService implements OnModuleInit {
     const values: any[] = [
       user.user_id,
       firstname,
-      lastname || null,
+      // The customer.lastname column is NOT NULL. A last name is optional at
+      // registration (e.g. VIP landing page), so fall back to an empty string
+      // instead of null to avoid a "Lastname is required" constraint error.
+      lastname || '',
       email,
       telephone || null,
       finalCompanyId,
