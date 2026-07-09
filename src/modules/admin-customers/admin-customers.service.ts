@@ -42,14 +42,14 @@ export class AdminCustomersService implements OnModuleInit {
   }
 
   async findAll(query: any): Promise<any> {
-    const { limit = 20, offset = 0, search, company_id, customer_type, archived = 'false', department_id } = query;
+    const { limit = 20, offset = 0, search, company_id, customer_type, archived = 'false', department_id, vip } = query;
 
     // Check which columns exist
     const columnCheck = await this.dataSource.query(`
       SELECT column_name 
       FROM information_schema.columns 
       WHERE table_name = 'customer' 
-      AND column_name IN ('customer_type', 'archived', 'department_id', 'discount_percentage', 'wholesale_discount_percentage', 'pay_later')
+      AND column_name IN ('customer_type', 'archived', 'department_id', 'discount_percentage', 'wholesale_discount_percentage', 'pay_later', 'vip')
     `);
     const existingColumns = columnCheck.map((row: any) => row.column_name);
     const hasCustomerType = existingColumns.includes('customer_type');
@@ -58,6 +58,8 @@ export class AdminCustomersService implements OnModuleInit {
     const hasDiscountPercentage = existingColumns.includes('discount_percentage');
     const hasWholesaleDiscountPercentage = existingColumns.includes('wholesale_discount_percentage');
     const hasPayLater = existingColumns.includes('pay_later');
+    const hasVip = existingColumns.includes('vip');
+    const wantsVip = vip === true || vip === 'true';
 
     const discountColumn = hasDiscountPercentage
       ? 'c.discount_percentage'
@@ -113,6 +115,10 @@ export class AdminCustomersService implements OnModuleInit {
       paramIndex++;
     }
 
+    if (wantsVip && hasVip) {
+      sqlQuery += ` AND COALESCE(c.vip, false) = true`;
+    }
+
     if (department_id && hasDepartmentId) {
       sqlQuery += ` AND c.department_id = $${paramIndex}`;
       params.push(Number(department_id));
@@ -160,6 +166,10 @@ export class AdminCustomersService implements OnModuleInit {
       countQuery += ` AND c.customer_type = $${countParamIndex}`;
       countParams.push(customer_type.trim());
       countParamIndex++;
+    }
+
+    if (wantsVip && hasVip) {
+      countQuery += ` AND COALESCE(c.vip, false) = true`;
     }
 
     if (department_id && hasDepartmentId) {
