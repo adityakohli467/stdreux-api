@@ -1639,8 +1639,8 @@ export class AdminOrdersService implements OnModuleInit {
       try {
         const xeroStatus = await this.xeroService.isConnected();
         if (xeroStatus.connected) {
-          const xeroResult = await this.xeroService.createInvoiceForOrder(id);
-          this.logger.log(`[Xero] Invoice ${xeroResult.invoiceNumber} created for order ${id}`);
+          await this.xeroService.markInvoiceAsPaidForOrder(id);
+          this.logger.log(`[Xero] Order ${id} marked as paid in Xero`);
         } else {
           this.logger.warn(`[Xero] Not connected — skipping auto-sync for order ${id}`);
         }

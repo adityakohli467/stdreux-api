@@ -812,8 +812,8 @@ export class StorePaymentService {
       try {
         const xeroStatus = await this.xeroService.isConnected();
         if (xeroStatus.connected) {
-          const xeroResult = await this.xeroService.createInvoiceForOrder(parseInt(orderId.toString()));
-          this.logger.log(`[Xero] Invoice ${xeroResult.invoiceNumber} created for order ${orderId}`);
+          await this.xeroService.markInvoiceAsPaidForOrder(parseInt(orderId.toString()));
+          this.logger.log(`[Xero] Order ${orderId} marked as paid in Xero`);
         } else {
           this.logger.warn(`[Xero] Not connected — skipping auto-sync for order ${orderId}`);
         }

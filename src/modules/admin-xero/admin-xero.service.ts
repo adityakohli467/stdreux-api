@@ -370,61 +370,18 @@ export class AdminXeroService implements OnModuleInit {
       // Step 1: Invoice was created as AUTHORISED
       // Step 2: Apply payment to move it to PAID status
       if (isPaid && createdInvoice.invoiceID) {
-        try {
-          const invoiceTotal = createdInvoice.total || createdInvoice.amountDue || parseFloat(order.order_total || 0);
-          const paymentDate = order.payment_date
-            ? new Date(order.payment_date).toISOString().split('T')[0]
-            : new Date().toISOString().split('T')[0];
-
-          this.logger.log(`[Xero Payment] Attempting to record payment: invoice=${createdInvoice.invoiceID}, amount=${invoiceTotal}, date=${paymentDate}`);
-
-          // Find a bank account to apply payment against
-          const accountsResponse = await this.xero.accountingApi.getAccounts(
-            tenantId, undefined, 'Type=="BANK"'
-          );
-          const bankAccounts = accountsResponse.body.accounts;
-
-          if (!bankAccounts || bankAccounts.length === 0) {
-            this.logger.error(`[Xero Payment] No bank accounts found in Xero. Cannot record payment.`);
-          } else {
-            const bankAccount = bankAccounts[0];
-            this.logger.log(`[Xero Payment] Using bank: ${bankAccount.name} (ID: ${bankAccount.accountID}, Code: ${bankAccount.code})`);
-
-            // Use createPayment (singular) with Payment object directly
-            const payment: any = {
-              invoice: { invoiceID: createdInvoice.invoiceID },
-              account: { accountID: bankAccount.accountID },
-              amount: invoiceTotal,
-              date: paymentDate,
-            };
-
-            this.logger.log(`[Xero Payment] Payload: ${JSON.stringify(payment)}`);
-
-            const paymentResponse = await this.xero.accountingApi.createPayment(tenantId, payment);
-            const createdPayment = (paymentResponse.body as any)?.payments?.[0] || paymentResponse.body;
-            this.logger.log(`[Xero Payment] Full response: ${JSON.stringify(paymentResponse.body)}`);
-            if (createdPayment?.paymentID) {
-              this.logger.log(`[Xero Payment] SUCCESS - PaymentID: ${createdPayment.paymentID} for invoice ${createdInvoice.invoiceNumber}`);
-            } else {
-              this.logger.warn(`[Xero Payment] Payment created but no paymentID in response`);
-            }
-          }
-        } catch (paymentError: any) {
-          this.logger.error(`[Xero Payment] FAILED for order #${orderId}`);
-          this.logger.error(`[Xero Payment] Error message: ${paymentError?.message || 'none'}`);
-          this.logger.error(`[Xero Payment] Error string: ${String(paymentError)}`);
-          try {
-            this.logger.error(`[Xero Payment] Full error: ${JSON.stringify(paymentError, Object.getOwnPropertyNames(paymentError))}`);
-          } catch (e) {
-            this.logger.error(`[Xero Payment] Could not stringify error`);
-          }
-          if (paymentError?.response?.body) {
-            this.logger.error(`[Xero Payment] Xero response body: ${JSON.stringify(paymentError.response.body)}`);
-          }
-          if (paymentError?.body) {
-            this.logger.error(`[Xero Payment] Error body: ${JSON.stringify(paymentError.body)}`);
-          }
-        }
+        const invoiceTotal = createdInvoice.total || createdInvoice.amountDue || parseFloat(order.order_total || 0);
+        const paymentDate = order.payment_date
+          ? new Date(order.payment_date).toISOString().split('T')[0]
+          : new Date().toISOString().split('T')[0];
+        await this.applyPaymentToInvoice(
+          tenantId,
+          createdInvoice.invoiceID,
+          invoiceTotal,
+          paymentDate,
+          orderId,
+          createdInvoice.invoiceNumber,
+        );
       }
 
       // Record the sync
@@ -448,6 +405,181 @@ export class AdminXeroService implements OnModuleInit {
       this.logger.error(`[Xero] Failed to create invoice for order #${orderId}: ${errorMsg}`, error?.stack);
       throw new BadRequestException(`Xero sync failed: ${errorMsg}`);
     }
+  }
+
+  /**
+   * Apply a payment against a Xero invoice so it moves to PAID status.
+   * Returns true if a payment was recorded.
+   */
+  private async applyPaymentToInvoice(
+    tenantId: string,
+    invoiceId: string,
+    amount: number,
+    paymentDate: string,
+    orderId?: number,
+    invoiceNumber?: string,
+  ): Promise<boolean> {
+    try {
+      this.logger.log(`[Xero Payment] Attempting to record payment: invoice=${invoiceId}, amount=${amount}, date=${paymentDate}`);
+
+      // Find a bank account to apply payment against
+      const accountsResponse = await this.xero.accountingApi.getAccounts(
+        tenantId, undefined, 'Type=="BANK"'
+      );
+      const bankAccounts = accountsResponse.body.accounts;
+
+      if (!bankAccounts || bankAccounts.length === 0) {
+        this.logger.error(`[Xero Payment] No bank accounts found in Xero. Cannot record payment.`);
+        return false;
+      }
+
+      const bankAccount = bankAccounts[0];
+      this.logger.log(`[Xero Payment] Using bank: ${bankAccount.name} (ID: ${bankAccount.accountID}, Code: ${bankAccount.code})`);
+
+      // Use createPayment (singular) with Payment object directly
+      const payment: any = {
+        invoice: { invoiceID: invoiceId },
+        account: { accountID: bankAccount.accountID },
+        amount,
+        date: paymentDate,
+      };
+
+      this.logger.log(`[Xero Payment] Payload: ${JSON.stringify(payment)}`);
+
+      const paymentResponse = await this.xero.accountingApi.createPayment(tenantId, payment);
+      const createdPayment = (paymentResponse.body as any)?.payments?.[0] || paymentResponse.body;
+      this.logger.log(`[Xero Payment] Full response: ${JSON.stringify(paymentResponse.body)}`);
+      if (createdPayment?.paymentID) {
+        this.logger.log(`[Xero Payment] SUCCESS - PaymentID: ${createdPayment.paymentID} for invoice ${invoiceNumber || invoiceId}`);
+        return true;
+      }
+      this.logger.warn(`[Xero Payment] Payment created but no paymentID in response`);
+      return false;
+    } catch (paymentError: any) {
+      this.logger.error(`[Xero Payment] FAILED${orderId ? ` for order #${orderId}` : ''}`);
+      this.logger.error(`[Xero Payment] Error message: ${paymentError?.message || 'none'}`);
+      this.logger.error(`[Xero Payment] Error string: ${String(paymentError)}`);
+      try {
+        this.logger.error(`[Xero Payment] Full error: ${JSON.stringify(paymentError, Object.getOwnPropertyNames(paymentError))}`);
+      } catch (e) {
+        this.logger.error(`[Xero Payment] Could not stringify error`);
+      }
+      if (paymentError?.response?.body) {
+        this.logger.error(`[Xero Payment] Xero response body: ${JSON.stringify(paymentError.response.body)}`);
+      }
+      if (paymentError?.body) {
+        this.logger.error(`[Xero Payment] Error body: ${JSON.stringify(paymentError.body)}`);
+      }
+      return false;
+    }
+  }
+
+  /**
+   * Ensure the Xero invoice for a paid order reflects the PAID status.
+   *
+   * This handles the case where an invoice was already synced to Xero as an
+   * unpaid (SUBMITTED) invoice — e.g. when the order was completed/delivered
+   * before payment. When the order is later marked paid (admin mark-paid, or the
+   * customer pays via payment link / Stripe webhook), we must update the EXISTING
+   * Xero invoice rather than trying to create a new one.
+   *
+   * - Not yet synced   -> create the invoice (which records payment since it's paid).
+   * - Synced + PAID    -> nothing to do.
+   * - Synced + unpaid  -> authorise the invoice (if needed) and apply a payment.
+   */
+  async markInvoiceAsPaidForOrder(orderId: number): Promise<void> {
+    // Has this order already been synced to Xero?
+    const existingSync = await this.dataSource.query(
+      `SELECT xero_invoice_id, xero_invoice_number FROM xero_invoice_sync WHERE order_id = $1`,
+      [orderId],
+    );
+
+    // Not synced yet — create the invoice. Since the order is now paid,
+    // createInvoiceForOrder will create it as AUTHORISED and apply the payment.
+    if (existingSync.length === 0) {
+      await this.createInvoiceForOrder(orderId);
+      return;
+    }
+
+    const xeroInvoiceId = existingSync[0].xero_invoice_id;
+
+    // Ensure we have valid tokens and an active tenant
+    const tokens = await this.getStoredTokens();
+    if (!tokens) {
+      throw new BadRequestException('Xero is not connected. Please connect Xero first.');
+    }
+    await this.setTokensAndRefreshIfNeeded(tokens);
+    await this.xero.updateTenants();
+
+    const tenantId = this.xero.tenants[0]?.tenantId;
+    if (!tenantId) {
+      throw new BadRequestException('No Xero organisation found');
+    }
+
+    // Fetch the current state of the invoice from Xero
+    const invoiceResponse = await this.xero.accountingApi.getInvoice(tenantId, xeroInvoiceId);
+    const invoice = invoiceResponse.body.invoices?.[0];
+
+    if (!invoice) {
+      this.logger.warn(`[Xero] Could not fetch invoice ${xeroInvoiceId} for order #${orderId}`);
+      return;
+    }
+
+    // Already paid — nothing to do
+    if (invoice.status === Invoice.StatusEnum.PAID) {
+      this.logger.log(`[Xero] Order #${orderId} invoice ${invoice.invoiceNumber} already PAID — skipping`);
+      return;
+    }
+
+    // Can't apply a payment to a voided/deleted invoice
+    if (
+      invoice.status === Invoice.StatusEnum.VOIDED ||
+      invoice.status === Invoice.StatusEnum.DELETED
+    ) {
+      this.logger.warn(`[Xero] Order #${orderId} invoice ${invoice.invoiceNumber} is ${invoice.status} — cannot mark paid`);
+      return;
+    }
+
+    // A payment can only be applied to an AUTHORISED invoice.
+    // If it's still DRAFT/SUBMITTED, move it to AUTHORISED first.
+    if (invoice.status !== Invoice.StatusEnum.AUTHORISED) {
+      this.logger.log(`[Xero] Order #${orderId} invoice ${invoice.invoiceNumber} is ${invoice.status} — authorising before payment`);
+      const updatePayload: Invoices = {
+        invoices: [{ invoiceID: xeroInvoiceId, status: Invoice.StatusEnum.AUTHORISED }],
+      };
+      await this.xero.accountingApi.updateInvoice(tenantId, xeroInvoiceId, updatePayload);
+    }
+
+    // Determine the outstanding amount to pay
+    const amount =
+      invoice.amountDue && invoice.amountDue > 0
+        ? invoice.amountDue
+        : invoice.total || 0;
+
+    if (!amount || amount <= 0) {
+      this.logger.warn(`[Xero] Order #${orderId} invoice ${invoice.invoiceNumber} has no outstanding amount — skipping payment`);
+      return;
+    }
+
+    // Use the order's payment date if available
+    const orderResult = await this.dataSource.query(
+      `SELECT payment_date FROM orders WHERE order_id = $1`,
+      [orderId],
+    );
+    const paymentDate = orderResult[0]?.payment_date
+      ? new Date(orderResult[0].payment_date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0];
+
+    await this.applyPaymentToInvoice(
+      tenantId,
+      xeroInvoiceId,
+      amount,
+      paymentDate,
+      orderId,
+      invoice.invoiceNumber,
+    );
+
+    this.logger.log(`[Xero] Order #${orderId} invoice ${invoice.invoiceNumber} marked as PAID in Xero`);
   }
 
   /**
