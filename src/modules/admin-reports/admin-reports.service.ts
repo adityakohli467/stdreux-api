@@ -314,13 +314,20 @@ export class AdminReportsService {
     let orderOptionsMap: { [key: number]: any[] } = {};
 
     if (orderIds.length > 0) {
-      // Get order products
+      // Get order products (include name/quantity so the report can list them)
       const productsQuery = `
         SELECT 
           op.order_id,
+          op.order_product_id,
+          op.product_id,
+          COALESCE(p.product_name, 'Unknown Product') as product_name,
+          op.quantity,
+          op.price,
           op.total as product_total
         FROM order_product op
+        LEFT JOIN product p ON op.product_id = p.product_id
         WHERE op.order_id = ANY($1::int[])
+        ORDER BY op.order_product_id
       `;
       const productsResult = await this.dataSource.query(productsQuery, [orderIds]);
       productsResult.forEach((row: any) => {
@@ -330,14 +337,18 @@ export class AdminReportsService {
         orderProductsMap[row.order_id].push(row);
       });
 
-      // Get order product options
+      // Get order product options (include name/value so they can be listed per product)
       const optionsQuery = `
         SELECT 
           opo.order_id,
+          opo.order_product_id,
+          opo.option_name,
+          opo.option_value,
           opo.option_price,
           opo.option_quantity
         FROM order_product_option opo
         WHERE opo.order_id = ANY($1::int[])
+        ORDER BY opo.order_product_option_id
       `;
       const optionsResult = await this.dataSource.query(optionsQuery, [orderIds]);
       optionsResult.forEach((row: any) => {
@@ -347,6 +358,28 @@ export class AdminReportsService {
         orderOptionsMap[row.order_id].push(row);
       });
     }
+
+    // Build a detailed products list per order (name, quantity, options)
+    const buildProducts = (orderId: number) => {
+      const products = orderProductsMap[orderId] || [];
+      const options = orderOptionsMap[orderId] || [];
+      return products.map((p: any) => ({
+        order_product_id: p.order_product_id,
+        product_id: p.product_id,
+        product_name: p.product_name,
+        quantity: Number(p.quantity) || 0,
+        price: parseFloat(p.price || 0),
+        total: parseFloat(p.product_total || 0),
+        options: options
+          .filter((o: any) => o.order_product_id === p.order_product_id)
+          .map((o: any) => ({
+            option_name: o.option_name,
+            option_value: o.option_value,
+            option_quantity: Number(o.option_quantity) || 0,
+            option_price: parseFloat(o.option_price || 0),
+          })),
+      }));
+    };
 
     // Calculate totals for summary
     const reports = result.map((row: any) => {
@@ -395,6 +428,7 @@ export class AdminReportsService {
         discount,
         gst,
         total,
+        products: buildProducts(row.order_id),
         customer_name: row.customer_name || 'N/A',
         company_name: row.company_name || row.customer_company_name || 'N/A',
         department_name: row.department_name || row.customer_department_name || 'N/A',
@@ -539,9 +573,14 @@ export class AdminReportsService {
       const productsQuery = `
         SELECT 
           op.order_id,
+          op.order_product_id,
+          COALESCE(p.product_name, 'Unknown Product') as product_name,
+          op.quantity,
           op.total as product_total
         FROM order_product op
+        LEFT JOIN product p ON op.product_id = p.product_id
         WHERE op.order_id = ANY($1::int[])
+        ORDER BY op.order_product_id
       `;
       const productsResult = await this.dataSource.query(productsQuery, [orderIds]);
       productsResult.forEach((row: any) => {
@@ -554,10 +593,14 @@ export class AdminReportsService {
       const optionsQuery = `
         SELECT 
           opo.order_id,
+          opo.order_product_id,
+          opo.option_name,
+          opo.option_value,
           opo.option_price,
           opo.option_quantity
         FROM order_product_option opo
         WHERE opo.order_id = ANY($1::int[])
+        ORDER BY opo.order_product_option_id
       `;
       const optionsResult = await this.dataSource.query(optionsQuery, [orderIds]);
       optionsResult.forEach((row: any) => {
@@ -599,6 +642,20 @@ export class AdminReportsService {
       const total = parseFloat(row.order_total || 0);
       const gst = Math.max(0, total - (afterDiscount + deliveryFee));
 
+      // Build a readable "Products" cell listing each product (name x qty) and options
+      const products = orderProductsMap[row.order_id] || [];
+      const options = orderOptionsMap[row.order_id] || [];
+      const productsText = products
+        .map((p: any) => {
+          const opts = options
+            .filter((o: any) => o.order_product_id === p.order_product_id)
+            .map((o: any) => `${o.option_name}: ${o.option_value}`)
+            .join(', ');
+          const base = `${p.product_name} x ${Number(p.quantity) || 0}`;
+          return opts ? `${base} (${opts})` : base;
+        })
+        .join(' | ');
+
       return {
         'Order ID': row.order_id,
         'Order Date': row.order_date,
@@ -609,6 +666,7 @@ export class AdminReportsService {
         'Location': row.location_name || 'N/A',
         'Status': this.getOrderStatusLabel(row),
         'Payment Status': this.isRowPaid(row) ? 'Paid' : 'Unpaid',
+        'Products': productsText,
         'Subtotal': subtotal.toFixed(2),
         'Delivery Fee': deliveryFee.toFixed(2),
         'Discount': discount.toFixed(2),
@@ -627,6 +685,7 @@ export class AdminReportsService {
       'Location',
       'Status',
       'Payment Status',
+      'Products',
       'Subtotal',
       'Delivery Fee',
       'Discount',
