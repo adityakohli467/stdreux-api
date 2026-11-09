@@ -491,16 +491,15 @@ export class StoreProductsService {
       const productPricePremium = product.product_price_premium ? parseFloat(product.product_price_premium) : null;
       const premiumPriceDiscounted = product.premium_price_discounted ? parseFloat(product.premium_price_discounted) : null;
 
+      const premiumFields = {
+        premium_discount_percentage: premiumDiscountPercentage !== null ? premiumDiscountPercentage.toFixed(2) : '0.00',
+        product_price_premium: productPricePremium !== null ? productPricePremium.toFixed(2) : '0.00',
+        premium_price_discounted: premiumPriceDiscounted !== null ? premiumPriceDiscounted.toFixed(2) : '0.00',
+      };
+
       // Get product-level discount (prioritize customer_product_discount over general discount)
       const productDiscount = productDiscountsMap.get(product.product_id) || 0;
       const companyDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
-      const tierDiscount = companyDiscount > 0 ? companyDiscount : productDiscount;
-
-      const premiumFields = {
-        premium_discount_percentage: premiumDiscountPercentage !== null ? premiumDiscountPercentage.toFixed(2) : '0.00',
-        product_price_premium: productPricePremium !== null ? this.pricingService.applyDiscountToPrice(productPricePremium, tierDiscount).toFixed(2) : '0.00',
-        premium_price_discounted: premiumPriceDiscounted !== null ? this.pricingService.applyDiscountToPrice(premiumPriceDiscounted, tierDiscount).toFixed(2) : '0.00',
-      };
 
       // Use pricing service for consistent calculations
       const pricing = this.pricingService.calculateProductPrice(
@@ -554,13 +553,12 @@ export class StoreProductsService {
 
       return {
         ...product,
-        retail_price: this.pricingService.applyDiscountToPrice(product.retail_price, tierDiscount),
         product_price: pricing.finalPrice.toFixed(2),
         original_price: pricing.originalPrice,
         discounted_price: pricing.finalPrice,
         discount_percentage: pricing.discountPercentage,
         has_discount: pricing.hasDiscount,
-        wholesale_price: this.pricingService.applyDiscountToPrice(pricing.wholesalePrice, tierDiscount),
+        wholesale_price: pricing.wholesalePrice,
         base_price: pricing.basePrice,
         is_wholesale: pricing.isWholesale,
         ...premiumFields,
@@ -826,13 +824,9 @@ export class StoreProductsService {
           optionDiscount,
           companyOptionDiscount,
         );
-        const optionTierDiscount = optionPricing.discountPercentage;
 
         return {
           ...value,
-          standard_price: this.pricingService.applyDiscountToPrice(value.standard_price, optionTierDiscount),
-          wholesale_price: this.pricingService.applyDiscountToPrice(value.wholesale_price, optionTierDiscount),
-          wholesale_price_premium: this.pricingService.applyDiscountToPrice(value.wholesale_price_premium, optionTierDiscount),
           product_option_price: optionPricing.finalPrice,
           original_option_price: optionPricing.basePrice,
           discounted_option_price: optionPricing.finalPrice,
@@ -842,24 +836,17 @@ export class StoreProductsService {
       }),
     }));
 
-    // Discount every customer-type price so whichever tier the storefront picks is discounted
-    const tierDiscount = pricing.discountPercentage;
-    const productPricePremium = this.pricingService.applyDiscountToPrice(product.product_price_premium, tierDiscount);
-    const premiumPriceDiscounted = this.pricingService.applyDiscountToPrice(product.premium_price_discounted, tierDiscount);
-
     const productWithDiscount = {
       ...product,
-      user_price: this.pricingService.applyDiscountToPrice(product.user_price, tierDiscount),
-      retail_price: this.pricingService.applyDiscountToPrice(product.retail_price, tierDiscount),
       premium_discount_percentage: product.premium_discount_percentage ? parseFloat(product.premium_discount_percentage).toFixed(2) : '0.00',
-      product_price_premium: productPricePremium ? parseFloat(productPricePremium).toFixed(2) : '0.00',
-      premium_price_discounted: premiumPriceDiscounted ? parseFloat(premiumPriceDiscounted).toFixed(2) : '0.00',
+      product_price_premium: product.product_price_premium ? parseFloat(product.product_price_premium).toFixed(2) : '0.00',
+      premium_price_discounted: product.premium_price_discounted ? parseFloat(product.premium_price_discounted).toFixed(2) : '0.00',
       product_price: pricing.finalPrice.toFixed(2),
       original_price: pricing.originalPrice,
       discounted_price: pricing.finalPrice,
       discount_percentage: pricing.discountPercentage,
       has_discount: pricing.hasDiscount,
-      wholesale_price: this.pricingService.applyDiscountToPrice(pricing.wholesalePrice, tierDiscount),
+      wholesale_price: pricing.wholesalePrice,
       base_price: pricing.basePrice,
       is_wholesale: pricing.isWholesale,
       categories: categoriesResult,
