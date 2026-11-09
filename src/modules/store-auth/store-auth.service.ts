@@ -271,26 +271,36 @@ export class StoreAuthService implements OnModuleInit {
       ].filter(Boolean);
       const fullAddress = addressParts.join(', ');
 
-      const companyQuery = `
-        INSERT INTO company (
-          user_id,
+      // Reuse an existing company with the same name so company pricing applies to the new customer
+      const existingCompany = await queryRunner.query(
+        `SELECT company_id FROM company WHERE LOWER(TRIM(company_name)) = LOWER(TRIM($1)) ORDER BY company_id LIMIT 1`,
+        [company_name],
+      );
+
+      if (existingCompany.length > 0) {
+        finalCompanyId = existingCompany[0].company_id;
+      } else {
+        const companyQuery = `
+          INSERT INTO company (
+            user_id,
+            company_name,
+            company_address,
+            company_status,
+            created_from
+          ) VALUES ($1, $2, $3, $4, $5)
+          RETURNING company_id
+        `;
+
+        const companyResult = await queryRunner.query(companyQuery, [
+          user.user_id,
           company_name,
-          company_address,
-          company_status,
-          created_from
-        ) VALUES ($1, $2, $3, $4, $5)
-        RETURNING company_id
-      `;
+          fullAddress || null,
+          1, // Active
+          'storefront_registration',
+        ]);
 
-      const companyResult = await queryRunner.query(companyQuery, [
-        user.user_id,
-        company_name,
-        fullAddress || null,
-        1, // Active
-        'storefront_registration',
-      ]);
-
-      finalCompanyId = companyResult[0].company_id;
+        finalCompanyId = companyResult[0].company_id;
+      }
     }
 
     // Build customer address

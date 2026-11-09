@@ -195,14 +195,24 @@ export class AuthService implements OnModuleInit {
       const addressParts = [address_line1, address_line2, suburb, state, postal_code].filter(Boolean);
       const fullAddress = addressParts.join(', ');
 
-      const companyResult = await this.dataSource.query(
-        `INSERT INTO company (user_id, company_name, company_address, company_status, created_from)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING company_id`,
-        [user.user_id, company_name, fullAddress || null, 1, 'storefront_registration'],
+      // Reuse an existing company with the same name so company pricing applies to the new customer
+      const existingCompany = await this.dataSource.query(
+        `SELECT company_id FROM company WHERE LOWER(TRIM(company_name)) = LOWER(TRIM($1)) ORDER BY company_id LIMIT 1`,
+        [company_name],
       );
 
-      finalCompanyId = companyResult[0].company_id;
+      if (existingCompany.length > 0) {
+        finalCompanyId = existingCompany[0].company_id;
+      } else {
+        const companyResult = await this.dataSource.query(
+          `INSERT INTO company (user_id, company_name, company_address, company_status, created_from)
+           VALUES ($1, $2, $3, $4, $5)
+           RETURNING company_id`,
+          [user.user_id, company_name, fullAddress || null, 1, 'storefront_registration'],
+        );
+
+        finalCompanyId = companyResult[0].company_id;
+      }
     }
 
     // Create customer record if customer
