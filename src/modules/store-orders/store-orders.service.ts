@@ -183,18 +183,16 @@ export class StoreOrdersService {
       const { isWholesale } = await this.pricingService.getCustomerType(customer.customer_id);
 
       // Get customer discounts
-      const { productDiscounts: productDiscountsMap, optionDiscounts: optionDiscountsMap } =
+      const { productDiscounts: productDiscountsMap } =
         await this.pricingService.getCustomerDiscounts(customer.customer_id);
 
-      // Get company-level discounts (override customer/wholesale/retail pricing) and
+      // Get company-level discounts (take precedence over customer discounts) and
       // resolve effective pay_later (customer OR company)
       let companyProductDiscountsMap = new Map<number, number>();
-      let companyOptionDiscountsMap = new Map<string, number>();
       const companyId = await this.pricingService.getCompanyIdForCustomer(customer.customer_id);
       if (companyId) {
         const companyDiscounts = await this.pricingService.getCompanyDiscounts(companyId);
         companyProductDiscountsMap = companyDiscounts.productDiscounts;
-        companyOptionDiscountsMap = companyDiscounts.optionDiscounts;
 
         if (!customer.pay_later) {
           try {
@@ -234,12 +232,14 @@ export class StoreOrdersService {
 
         // Prioritize price from payload, then DB user_price
         let userPrice = item.price ? parseFloat(item.price) : null;
-        if (userPrice === null || isNaN(userPrice) || userPrice <= 0) {
+        // Payload prices come from the store product API, which already applies company/customer discounts
+        const hasPayloadPrice = userPrice !== null && !isNaN(userPrice) && userPrice > 0;
+        if (!hasPayloadPrice) {
           userPrice = product.user_price ? parseFloat(product.user_price) : null;
         }
 
-        const productDiscount = productDiscountsMap.get(product.product_id) || 0;
-        const companyProductDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
+        const productDiscount = hasPayloadPrice ? 0 : productDiscountsMap.get(product.product_id) || 0;
+        const companyProductDiscount = hasPayloadPrice ? 0 : companyProductDiscountsMap.get(product.product_id) || 0;
 
         const pricing = this.pricingService.calculateProductPrice(
           retailPrice,
@@ -264,10 +264,7 @@ export class StoreOrdersService {
 
           for (const option of item.options) {
             if (option.option_value_id) {
-              const discountKey = `${product.product_id}_${option.option_value_id}`;
-              const optionDiscount = optionDiscountsMap.get(discountKey) || 0;
-              const companyOptionDiscount = companyOptionDiscountsMap.get(discountKey) || 0;
-
+              // Option prices in the payload already include company/customer discounts
               const baseOptionPrice = parseFloat(option.option_price || option.price || 0);
 
               const optionPricing = this.pricingService.calculateOptionPrice(
@@ -275,8 +272,6 @@ export class StoreOrdersService {
                 null, // wholesalePrice (unknown without lookup)
                 baseOptionPrice,
                 isWholesale,
-                optionDiscount,
-                companyOptionDiscount,
               );
 
               if (optionPricing.finalPrice > 0) {
@@ -532,12 +527,27 @@ export class StoreOrdersService {
       if (payment_intent_id && payment_method !== 'pay_later') {
         try {
           const piStatus = await this.stripeService.getPaymentIntentStatus(payment_intent_id);
+          // Always log the exact status Stripe returned at order-creation time so that any
+          // future "Stripe incomplete but order marked paid" discrepancy is traceable.
+          this.logger.log(
+            `[Payment][OrderCreate] intent=${payment_intent_id} customer=${customer.customer_id} ` +
+            `stripe_status=${piStatus.status} stripe_amount=${piStatus.amount} order_amount_cents=${Math.round(total * 100)}`,
+          );
           if (piStatus.status === 'succeeded') {
             finalPaymentStatus = 'succeeded';
             finalOrderStatus = 2; // 2 = Paid
+          } else {
+            // Order is NOT being marked paid; record why for diagnosis.
+            this.logger.warn(
+              `[Payment][OrderCreate] intent=${payment_intent_id} NOT marked paid because ` +
+              `stripe_status='${piStatus.status}' (expected 'succeeded'). Order will remain pending.`,
+            );
           }
-        } catch (e) {
-          this.logger.warn(`Failed to verify payment intent ${payment_intent_id}: ${e.message}`);
+        } catch (e: any) {
+          this.logger.error(
+            `[Payment][OrderCreate] Failed to retrieve Stripe status for intent=${payment_intent_id} ` +
+            `customer=${customer.customer_id}: ${e?.message}. Order will remain pending.`,
+          );
         }
       }
 
@@ -745,8 +755,17 @@ export class StoreOrdersService {
             payment_intent_id,
             order_id: orderId,
           });
-        } catch (err) {
-          this.logger.error(`Error during payment verification for order ${orderId}:`, err);
+        } catch (err: any) {
+          // CRITICAL: verifyPayment is what creates the payment_history / audit-log row that
+          // the admin > payments screen reads from. If it throws here, the order may already be
+          // marked paid (order_status=2) while NO payment log exists. Log loudly with full context
+          // so this exact situation is diagnosable instead of silently swallowed.
+          this.logger.error(
+            `[Payment][OrderCreate] verifyPayment FAILED for order ${orderId} intent=${payment_intent_id} ` +
+            `orderPaymentStatus=${finalPaymentStatus}. Order may be marked paid with NO payment_history row ` +
+            `(will not appear in admin > payments). Error: ${err?.message}`,
+            err?.stack,
+          );
         }
       }
 

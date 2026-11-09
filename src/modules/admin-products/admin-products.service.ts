@@ -14,6 +14,28 @@ export class AdminProductsService implements OnModuleInit {
     private pricingService: PricingService,
   ) { }
 
+  private discountOptionTierPrices(option: any, discountPercentage: number) {
+    const apply = (v: any) => this.pricingService.applyDiscountToPrice(v, discountPercentage);
+    const result: any = {
+      standard_price: apply(option.standard_price),
+      wholesale_price: apply(option.wholesale_price),
+      wholesale_price_premium: apply(option.wholesale_price_premium),
+    };
+    if ('subscriber_price' in option) result.subscriber_price = apply(option.subscriber_price);
+    return result;
+  }
+
+  private discountProductTierPrices(product: any, discountPercentage: number) {
+    const apply = (v: any) => this.pricingService.applyDiscountToPrice(v, discountPercentage);
+    return {
+      retail_price: apply(product.retail_price),
+      user_price: apply(product.user_price),
+      product_price_premium: apply(product.product_price_premium),
+      premium_price_discounted: apply(product.premium_price_discounted),
+      subscriber_rate: apply(product.subscriber_rate),
+    };
+  }
+
   async onModuleInit() {
     // Ensure priority access columns exist so storefront visibility filtering
     // and the daily expiry cron work even before any product is created/edited.
@@ -312,6 +334,7 @@ export class AdminProductsService implements OnModuleInit {
 
           return {
             ...option,
+            ...this.discountOptionTierPrices(option, optionPricing.discountPercentage),
             option_base_price: optionPricing.basePrice,
             option_price: optionPricing.finalPrice,
             discount_percentage: optionPricing.discountPercentage,
@@ -323,6 +346,7 @@ export class AdminProductsService implements OnModuleInit {
 
       return {
         ...product,
+        ...this.discountProductTierPrices(product, pricing.discountPercentage),
         product_price: pricing.finalPrice,
         original_price: pricing.basePrice,
         base_retail_price: pricing.originalPrice,
@@ -531,6 +555,7 @@ export class AdminProductsService implements OnModuleInit {
 
         return {
           ...option,
+          ...this.discountOptionTierPrices(option, optionPricing.discountPercentage),
           option_base_price: optionPricing.basePrice,
           option_price: optionPricing.finalPrice,
           discount_percentage: optionPricing.discountPercentage,
@@ -543,6 +568,7 @@ export class AdminProductsService implements OnModuleInit {
     return {
       product: {
         ...product,
+        ...this.discountProductTierPrices(product, pricing.discountPercentage),
         product_price: pricing.finalPrice,
         original_price: pricing.basePrice,
         base_retail_price: pricing.originalPrice,
