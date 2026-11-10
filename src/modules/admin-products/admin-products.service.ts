@@ -2,7 +2,7 @@ import { Injectable, Logger, NotFoundException, BadRequestException, OnModuleIni
 import { DataSource } from 'typeorm';
 import { Cron } from '@nestjs/schedule';
 import { FileStorageService } from '../../common/services/file-storage.service';
-import { PricingService } from '../../common/services/pricing.service';
+import { PricingService, PricingResult, OptionPricingResult } from '../../common/services/pricing.service';
 
 @Injectable()
 export class AdminProductsService implements OnModuleInit {
@@ -14,8 +14,8 @@ export class AdminProductsService implements OnModuleInit {
     private pricingService: PricingService,
   ) { }
 
-  private discountOptionTierPrices(option: any, discountPercentage: number) {
-    const apply = (v: any) => this.pricingService.applyDiscountToPrice(v, discountPercentage);
+  private discountOptionTierPrices(option: any, pricing: OptionPricingResult) {
+    const apply = (v: any) => this.pricingService.resolveTierPrice(v, pricing);
     const result: any = {
       standard_price: apply(option.standard_price),
       wholesale_price: apply(option.wholesale_price),
@@ -25,8 +25,8 @@ export class AdminProductsService implements OnModuleInit {
     return result;
   }
 
-  private discountProductTierPrices(product: any, discountPercentage: number) {
-    const apply = (v: any) => this.pricingService.applyDiscountToPrice(v, discountPercentage);
+  private discountProductTierPrices(product: any, pricing: PricingResult) {
+    const apply = (v: any) => this.pricingService.resolveTierPrice(v, pricing);
     return {
       retail_price: apply(product.retail_price),
       user_price: apply(product.user_price),
@@ -334,7 +334,7 @@ export class AdminProductsService implements OnModuleInit {
 
           return {
             ...option,
-            ...this.discountOptionTierPrices(option, optionPricing.discountPercentage),
+            ...this.discountOptionTierPrices(option, optionPricing),
             option_base_price: optionPricing.basePrice,
             option_price: optionPricing.finalPrice,
             discount_percentage: optionPricing.discountPercentage,
@@ -346,7 +346,7 @@ export class AdminProductsService implements OnModuleInit {
 
       return {
         ...product,
-        ...this.discountProductTierPrices(product, pricing.discountPercentage),
+        ...this.discountProductTierPrices(product, pricing),
         product_price: pricing.finalPrice,
         original_price: pricing.basePrice,
         base_retail_price: pricing.originalPrice,
@@ -555,7 +555,7 @@ export class AdminProductsService implements OnModuleInit {
 
         return {
           ...option,
-          ...this.discountOptionTierPrices(option, optionPricing.discountPercentage),
+          ...this.discountOptionTierPrices(option, optionPricing),
           option_base_price: optionPricing.basePrice,
           option_price: optionPricing.finalPrice,
           discount_percentage: optionPricing.discountPercentage,
@@ -568,7 +568,7 @@ export class AdminProductsService implements OnModuleInit {
     return {
       product: {
         ...product,
-        ...this.discountProductTierPrices(product, pricing.discountPercentage),
+        ...this.discountProductTierPrices(product, pricing),
         product_price: pricing.finalPrice,
         original_price: pricing.basePrice,
         base_retail_price: pricing.originalPrice,

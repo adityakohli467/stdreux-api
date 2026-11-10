@@ -281,14 +281,6 @@ export class AdminCompaniesService {
         `ALTER TABLE product ADD COLUMN IF NOT EXISTS product_code varchar(100)`,
       );
 
-      await this.dataSource.query(
-        `ALTER TABLE product ADD COLUMN IF NOT EXISTS product_price_premium decimal(10,2)`,
-      );
-
-      await this.dataSource.query(
-        `ALTER TABLE option_value ADD COLUMN IF NOT EXISTS wholesale_price_premium DECIMAL(15,4)`,
-      );
-
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS company_product_discount (
           company_product_discount_id SERIAL PRIMARY KEY,
@@ -325,7 +317,7 @@ export class AdminCompaniesService {
   async getCompanyProductOptionDiscounts(companyId: number): Promise<any> {
     await this.ensureCompanyPricingSchema();
 
-    // Company discounts apply to wholesale customers only, so the wholesale tier prices are the reference.
+    // Company pricing uses the standard (retail) base price as the reference.
     const productsWithOptionsQuery = `
       SELECT 
         p.product_id, 
@@ -357,8 +349,6 @@ export class AdminCompaniesService {
               'option_value_name', ov.name,
               'option_base_price', COALESCE(ov.standard_price, po.option_price, 0),
               'option_price', COALESCE(ov.standard_price, po.option_price, 0),
-              'wholesale_price', ov.wholesale_price_premium,
-              'wholesale_essential_price', ov.wholesale_price,
               'option_price_prefix', po.option_price_prefix,
               'discount_percentage', COALESCE(cpod.discount_percentage, 0),
               'company_product_option_discount_id', cpod.company_product_option_discount_id
@@ -386,8 +376,6 @@ export class AdminCompaniesService {
         p.product_name,
         p.product_code,
         p.product_price,
-        p.product_price_premium as wholesale_price,
-        p.retail_price as wholesale_essential_price,
         (
           SELECT c.category_name
           FROM product_category pc
@@ -443,8 +431,6 @@ export class AdminCompaniesService {
       category_sort_order: p.category_sort_order != null ? Number(p.category_sort_order) : 9999,
       subcategory_name: p.subcategory_name || null,
       product_price: parseFloat(p.product_price || 0),
-      wholesale_price: p.wholesale_price != null ? parseFloat(p.wholesale_price) : null,
-      wholesale_essential_price: p.wholesale_essential_price != null ? parseFloat(p.wholesale_essential_price) : null,
       discount_percentage: parseFloat(p.discount_percentage || 0),
       company_product_discount_id: p.company_product_discount_id,
       has_options: false,
