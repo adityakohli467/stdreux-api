@@ -124,8 +124,8 @@ export class PricingService {
 
   /**
    * Get company-level discounts (product-level and option-level).
-   * Company discounts, when present for a product/option, OVERRIDE all other
-   * discounts (wholesale tier, customer discounts, retail discounts).
+   * Company discounts apply only to wholesale customers (on their wholesale tier price)
+   * and take precedence over customer discounts.
    */
   async getCompanyDiscounts(companyId: number): Promise<{
     productDiscounts: Map<number, number>;
@@ -174,11 +174,20 @@ export class PricingService {
   }
 
   /**
-   * Calculate product price based on customer type and discounts
-   *
-   * When companyDiscount > 0, company-level pricing OVERRIDES everything else:
-   * the price becomes the retail base price reduced by the company discount %,
-   * ignoring wholesale tier, user_price and customer/retail discounts.
+   * Scale a raw tier price field by a discount %, preserving null/empty values and the value type.
+   */
+  applyDiscountToPrice(value: any, discountPercentage: number): any {
+    if (!discountPercentage || discountPercentage <= 0) return value;
+    if (value === null || value === undefined || value === '') return value;
+    const n = parseFloat(value.toString());
+    if (isNaN(n)) return value;
+    const discounted = Math.round((n * (1 - discountPercentage / 100) + Number.EPSILON) * 100) / 100;
+    return typeof value === 'number' ? discounted : discounted.toFixed(2);
+  }
+
+  /**
+   * Calculate product price based on customer type and discounts.
+   * companyDiscount applies only to wholesale customers and takes precedence over productDiscount.
    */
   calculateProductPrice(
     retailPrice: number,
@@ -200,21 +209,6 @@ export class PricingService {
       calculatedWholesalePrice = discount > 0 ? originalRetailPrice * (1 - discount / 100) : originalRetailPrice;
     }
 
-    // Company-level pricing overrides all other discounts
-    if (companyDiscount > 0) {
-      const companyBase = originalRetailPrice;
-      const companyFinal = companyBase * (1 - companyDiscount / 100);
-      return {
-        basePrice: companyBase,
-        finalPrice: companyFinal,
-        originalPrice: originalRetailPrice,
-        wholesalePrice: calculatedWholesalePrice,
-        discountPercentage: companyDiscount,
-        hasDiscount: true,
-        isWholesale,
-      };
-    }
-
     // Determine base price based on customer type or user_price override
     let basePrice: number;
     
@@ -224,11 +218,11 @@ export class PricingService {
       basePrice = isWholesale ? calculatedWholesalePrice : originalRetailPrice;
     }
 
-    // Apply product-level discount
     let finalPrice = basePrice;
     let discountPercentage = 0;
-    if (productDiscount > 0) {
-      discountPercentage = productDiscount;
+    const effectiveDiscount = isWholesale && companyDiscount > 0 ? companyDiscount : productDiscount;
+    if (effectiveDiscount > 0) {
+      discountPercentage = effectiveDiscount;
       finalPrice = basePrice * (1 - discountPercentage / 100);
     }
 
@@ -254,22 +248,6 @@ export class PricingService {
     optionDiscount: number = 0,
     companyDiscount: number = 0,
   ): OptionPricingResult {
-    // Company-level pricing overrides all other discounts.
-    // Use the retail/standard base, ignoring wholesale tier.
-    if (companyDiscount > 0) {
-      const companyBase =
-        standardPrice !== null && standardPrice !== undefined
-          ? parseFloat(standardPrice.toString())
-          : parseFloat(baseOptionPrice.toString()) || 0;
-      const companyFinal = companyBase * (1 - companyDiscount / 100);
-      return {
-        basePrice: companyBase,
-        finalPrice: companyFinal,
-        discountPercentage: companyDiscount,
-        hasDiscount: true,
-      };
-    }
-
     // Determine base price based on customer type
     let basePrice = parseFloat(baseOptionPrice.toString()) || 0;
     
@@ -279,11 +257,11 @@ export class PricingService {
       basePrice = parseFloat(standardPrice.toString());
     }
 
-    // Apply option-level discount
     let finalPrice = basePrice;
     let discountPercentage = 0;
-    if (optionDiscount > 0) {
-      discountPercentage = optionDiscount;
+    const effectiveDiscount = isWholesale && companyDiscount > 0 ? companyDiscount : optionDiscount;
+    if (effectiveDiscount > 0) {
+      discountPercentage = effectiveDiscount;
       finalPrice = basePrice * (1 - discountPercentage / 100);
     }
 

@@ -183,18 +183,16 @@ export class StoreOrdersService {
       const { isWholesale } = await this.pricingService.getCustomerType(customer.customer_id);
 
       // Get customer discounts
-      const { productDiscounts: productDiscountsMap, optionDiscounts: optionDiscountsMap } =
+      const { productDiscounts: productDiscountsMap } =
         await this.pricingService.getCustomerDiscounts(customer.customer_id);
 
-      // Get company-level discounts (override customer/wholesale/retail pricing) and
+      // Get company-level discounts (wholesale customers only) and
       // resolve effective pay_later (customer OR company)
       let companyProductDiscountsMap = new Map<number, number>();
-      let companyOptionDiscountsMap = new Map<string, number>();
       const companyId = await this.pricingService.getCompanyIdForCustomer(customer.customer_id);
       if (companyId) {
         const companyDiscounts = await this.pricingService.getCompanyDiscounts(companyId);
         companyProductDiscountsMap = companyDiscounts.productDiscounts;
-        companyOptionDiscountsMap = companyDiscounts.optionDiscounts;
 
         if (!customer.pay_later) {
           try {
@@ -234,12 +232,14 @@ export class StoreOrdersService {
 
         // Prioritize price from payload, then DB user_price
         let userPrice = item.price ? parseFloat(item.price) : null;
-        if (userPrice === null || isNaN(userPrice) || userPrice <= 0) {
+        // Payload prices come from the store product API, which already applies company/customer discounts
+        const hasPayloadPrice = userPrice !== null && !isNaN(userPrice) && userPrice > 0;
+        if (!hasPayloadPrice) {
           userPrice = product.user_price ? parseFloat(product.user_price) : null;
         }
 
-        const productDiscount = productDiscountsMap.get(product.product_id) || 0;
-        const companyProductDiscount = companyProductDiscountsMap.get(product.product_id) || 0;
+        const productDiscount = hasPayloadPrice ? 0 : productDiscountsMap.get(product.product_id) || 0;
+        const companyProductDiscount = hasPayloadPrice ? 0 : companyProductDiscountsMap.get(product.product_id) || 0;
 
         const pricing = this.pricingService.calculateProductPrice(
           retailPrice,
@@ -264,10 +264,7 @@ export class StoreOrdersService {
 
           for (const option of item.options) {
             if (option.option_value_id) {
-              const discountKey = `${product.product_id}_${option.option_value_id}`;
-              const optionDiscount = optionDiscountsMap.get(discountKey) || 0;
-              const companyOptionDiscount = companyOptionDiscountsMap.get(discountKey) || 0;
-
+              // Option prices in the payload already include company/customer discounts
               const baseOptionPrice = parseFloat(option.option_price || option.price || 0);
 
               const optionPricing = this.pricingService.calculateOptionPrice(
@@ -275,8 +272,6 @@ export class StoreOrdersService {
                 null, // wholesalePrice (unknown without lookup)
                 baseOptionPrice,
                 isWholesale,
-                optionDiscount,
-                companyOptionDiscount,
               );
 
               if (optionPricing.finalPrice > 0) {
